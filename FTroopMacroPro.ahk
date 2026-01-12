@@ -16,7 +16,7 @@ global gameWindowClass := ""  ; Will be auto-detected
 global maxWaitTime := 120000  ; Maximum wait time in ms (2 minutes)
 
 ; Update Configuration
-global SCRIPT_VERSION := "1.2.2"
+global SCRIPT_VERSION := "1.2.3"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacro.ahk"
@@ -1026,4 +1026,5 @@ BtnExit:
 GuiClose:
     ExitApp
 return
+
 
