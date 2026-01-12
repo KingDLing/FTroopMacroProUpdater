@@ -33,7 +33,7 @@ Gui, Add, Button, xm y+20 w580 h45 gBtnExecute, Execute Build (F11)
 Gui, Add, Button, xm y+10 w580 h40 gBtnClear, Clear All Bases
 Gui, Add, Button, xm y+5 w580 h40 gBtnUpdate, Check for Updates
 Gui, Add, Button, xm y+5 w580 h40 gBtnExit, Exit
-
+Gui, Add, Button, xm y+5 w580 h40 gBtnHelp, Help / Instructions
 ; Separator line
 Gui, Add, Text, xm y+15 w600 h2 0x10 Background404040
 
@@ -117,7 +117,61 @@ BtnUpdate:
         GuiControl,, StatusText, Already up to date
         return
     }
+    BtnHelp:
+    ; Create the help text
+    helpText = 
+    (
+FTROOP MACRO PRO v%SCRIPT_VERSION%
+
+WHAT THIS SCRIPT DOES:
+Automates unit building across multiple bases in Combat Siege.
+Records base positions and navigation paths, then automatically cycles
+through bases to build units.
+
+HOTKEYS:
+F10      - Record unit position on screen
+F11      - Execute building cycle 
+ESC      - Exit program
+
+
+QUICK START:
+
+1. Start at base 1.
+
+2. Hover mouse over unit you want to build and Click F10 
+
+3. If you need a timer to let resources refill, do so at this step.
+
+4. Enter unit count and delay time between builds
+
+5. If you are producing on a single base, click no at this step.  If you are producing on multiple bases, continue to next steps.
+
+6. Use arrow keys to navigate to next base
+
+7. Press F10 at each new base you want to produce units.
+
+8. Press F11 to start building when you are finished adding bases.
+
+FEATURES:
+ Multiple base support
+ Custom build delays
+ Resource refill delay
+ Auto-return to Base 1
+ Real-time status updates
+ Auto-update Macro "When available"
+ Game Window focus management
+
+IMPORTANT:
+ Don't move map during execution
+ Game must remain visible
+
+
+
+    )
     
+    ; Show the help in a message box
+    MsgBox, %helpText%
+return
     ; New version available
     MsgBox, 4, Update Available, New version %latestVersion% is available!`n`nCurrent version: %SCRIPT_VERSION%`nLatest version: %latestVersion%`n`nUpdate now?
     
