@@ -16,10 +16,10 @@ global gameWindowClass := ""  ; Will be auto-detected
 global maxWaitTime := 120000  ; Maximum wait time in ms (2 minutes)
 
 ; Update Configuration
-global SCRIPT_VERSION := "3.0"
-global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacro.ahk"
+global SCRIPT_VERSION := "4.0"
+global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
-global SCRIPT_NAME := "FTroopMacro.ahk"
+global SCRIPT_NAME := "FTroopMacroPro.ahk"
 
 ; ─────────────────────────────────────────────
 ; GUI
@@ -89,7 +89,7 @@ Right::
 return
 
 ; ═══════════════════════════════════════════════════════════
-; AUTO-UPDATE SYSTEM
+; AUTO-UPDATE SYSTEM - WITH CACHE BUSTING
 ; ═══════════════════════════════════════════════════════════
 
 BtnUpdate:
@@ -152,9 +152,12 @@ CheckForUpdates() {
     global VERSION_CHECK_URL
     
     try {
+        ; Add timestamp to prevent GitHub caching
+        cacheBusterURL := VERSION_CHECK_URL . "?t=" . A_Now
+        
         ; Create HTTP request object
         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-        whr.Open("GET", VERSION_CHECK_URL, true)
+        whr.Open("GET", cacheBusterURL, true)
         whr.Send()
         whr.WaitForResponse()
         
@@ -162,10 +165,19 @@ CheckForUpdates() {
         versionText := whr.ResponseText
         whr := ""  ; Release object
         
-        ; Extract version number (format: 1.2.0)
-        RegExMatch(versionText, "(\d+\.\d+\.\d+)", latestVersion)
+        ; ===== SIMPLE EXTRACTION =====
+        ; Remove all non-numeric/dot characters
+        versionText := RegExReplace(versionText, "[^\d\.]", "")
         
-        return latestVersion1
+        ; Trim leading/trailing dots
+        versionText := Trim(versionText, ".")
+        
+        ; If empty, return ERROR
+        if (versionText = "")
+            return "ERROR"
+        
+        return versionText
+        ; =============================
     }
     catch {
         return "ERROR"
@@ -181,8 +193,13 @@ DownloadUpdate() {
         tempFile := scriptDir . "\" . SCRIPT_NAME . ".new"
         backupFile := scriptDir . "\" . SCRIPT_NAME . ".backup"
         
-        ; Download the updated script
-        URLDownloadToFile, %UPDATE_URL%, %tempFile%
+        ; ===== ADD CACHE BUSTER =====
+        ; Add timestamp to prevent GitHub caching
+        cacheBusterURL := UPDATE_URL . "?t=" . A_Now
+        ; ============================
+        
+        ; Download the updated script WITH cache buster
+        URLDownloadToFile, %cacheBusterURL%, %tempFile%
         
         ; Check if download was successful
         FileGetSize, fileSize, %tempFile%
@@ -1026,6 +1043,3 @@ BtnExit:
 GuiClose:
     ExitApp
 return
-
-
-
