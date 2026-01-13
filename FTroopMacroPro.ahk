@@ -4,7 +4,7 @@ CoordMode, Mouse, Screen
 CoordMode, ToolTip, Screen
 
 ; ═══════════════════════════════════════════════════════════
-; FTroop Macro Pro - Unit Builder
+; FTroop Macro Pro 
 ; ═══════════════════════════════════════════════════════════
 
 global bases := Object()
@@ -1142,3 +1142,4 @@ BtnExit:
 GuiClose:
     ExitApp
 return
+
