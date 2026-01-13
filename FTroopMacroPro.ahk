@@ -1,6 +1,7 @@
 #NoEnv
 #SingleInstance Force
 CoordMode, Mouse, Screen
+CoordMode, ToolTip, Screen
 
 ; ═══════════════════════════════════════════════════════════
 ; FTroop Macro Pro - Unit Builder
@@ -10,10 +11,11 @@ global bases := Object()
 global isRecording := false
 global arrowKeys := Object()
 global building := false
+global isPaused := false  
 global restartCycle := false
 global resourceDelay := 0
-global gameWindowClass := ""  ; Will be auto-detected
-global maxWaitTime := 120000  ; Maximum wait time in ms (2 minutes)
+global gameWindowClass := ""
+global maxWaitTime := 120000
 
 ; Update Configuration
 global SCRIPT_VERSION := "4.0"
@@ -64,8 +66,10 @@ return
 
 F10::Gosub, BtnRecordBase
 F11::Gosub, BtnExecute
+F12::Gosub, TogglePause  
+F9::Gosub, RestartCycle
 Esc::ExitApp
-^!F::Gosub, ForceGameFocus  ; Ctrl+Alt+F to force game focus
+^!F::Gosub, ForceGameFocus
 
 ; Arrow key recording
 Up::
@@ -83,13 +87,127 @@ Right::
         if count is not number
             count := 0
         
-        ToolTip, Recording arrows: %count% keys pressed`nPress F10 when at base
+        ShowTooltip("Recording arrows: " . count . " keys pressed`nPress F10 when at base")
     }
     Send, {%A_ThisHotkey%}
 return
 
 ; ═══════════════════════════════════════════════════════════
-; AUTO-UPDATE SYSTEM - WITH CACHE BUSTING
+; PAUSE/RESUME FUNCTIONALITY
+; ═══════════════════════════════════════════════════════════
+TogglePause:
+    if (!building)
+    {
+        ShowTooltip("Nothing to pause - not building")
+        Sleep, 1500
+        ToolTip
+        return
+    }
+    
+    isPaused := !isPaused
+    
+    if (isPaused)
+    {
+        UpdateStatus(" PAUSED - Press F12 to resume")
+        ShowTooltip(" PAUSED`n`nPress F12 to resume`nPress ESC to exit")
+    }
+    else
+    {
+        UpdateStatus(" Resuming build...")
+        ShowTooltip(" Resuming...")
+        Sleep, 1000
+        ToolTip
+    }
+return
+
+; ═══════════════════════════════════════════════════════════
+; TOOLTIP POSITIONING 
+; ═══════════════════════════════════════════════════════════
+ShowTooltip(message) {
+    ; Position tooltip offset from mouse pointer
+    MouseGetPos, mX, mY
+    ToolTip, %message%, mX + 200, mY + 100
+}
+
+; ═══════════════════════════════════════════════════════════
+; KEEP SCREEN AWAKE FOR LONG DELAYS
+; ═══════════════════════════════════════════════════════════
+KeepScreenAwake(delaySeconds) {
+    ; Only needed for delays longer than 1 minute
+    if (delaySeconds < 60)
+        return false
+    
+    ; Jiggle interval: every 30 seconds
+    jiggleInterval := 30000  ; 30 seconds in ms
+    return true
+}
+
+PerformScreenJiggle() {
+    ; Subtle mouse jiggle in safe corner to prevent sleep
+    MouseGetPos, origX, origY
+    
+    ; Move to top-left corner (safe area)
+    MouseMove, 5, 5, 0
+    Sleep, 50
+    MouseMove, 10, 10, 0
+    Sleep, 50
+    
+    ; Return to original position
+    MouseMove, origX, origY, 0
+}
+
+; ═══════════════════════════════════════════════════════════
+; HUMAN-LIKE MOUSE MOVEMENT
+; ═══════════════════════════════════════════════════════════
+SmoothMouseMove(targetX, targetY, speed := 10) {
+    ; Get current position
+    MouseGetPos, startX, startY
+    
+    ; Calculate distance
+    deltaX := targetX - startX
+    deltaY := targetY - startY
+    distance := Sqrt(deltaX**2 + deltaY**2)
+    
+    ; If already at target, no need to move
+    if (distance < 2)
+        return
+    
+    ; Calculate number of steps based on distance and speed
+    ; Speed: 1=slowest, 5=fastest
+    steps := Max(10, Floor(distance / (speed * 5)))
+    
+    ; Add slight curve to movement (more natural)
+    curveAmount := Random(-10, 10)
+    
+    Loop, %steps%
+    {
+        progress := A_Index / steps
+        
+        ; Ease-in-out function for smooth acceleration/deceleration
+        t := progress
+        eased := t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+        
+        ; Calculate position with slight curve
+        currentX := startX + (deltaX * eased)
+        currentY := startY + (deltaY * eased) + (curveAmount * Sin(progress * 3.14159))
+        
+        MouseMove, %currentX%, %currentY%, 0
+        
+        ; Variable delay for more natural movement
+        Sleep, % Random(5, 15)
+    }
+    
+    ; Ensure we end exactly at target
+    MouseMove, %targetX%, %targetY%, 0
+}
+
+Random(min, max) {
+    Random, rand, %min%, %max%
+    return rand
+}
+
+; ═══════════════════════════════════════════════════════════
+; AUTO-UPDATE SYSTEM
 ; ═══════════════════════════════════════════════════════════
 
 BtnUpdate:
@@ -101,7 +219,6 @@ BtnUpdate:
     
     GuiControl,, StatusText, Checking for updates...
     
-    ; Check for updates
     latestVersion := CheckForUpdates()
     
     if (latestVersion = "ERROR")
@@ -117,8 +234,35 @@ BtnUpdate:
         GuiControl,, StatusText, Already up to date
         return
     }
-    BtnHelp:
-    ; Create the help text
+    
+    MsgBox, 4, Update Available, New version %latestVersion% is available!`n`nCurrent version: %SCRIPT_VERSION%`nLatest version: %latestVersion%`n`nUpdate now?
+    
+    IfMsgBox No
+    {
+        GuiControl,, StatusText, Update cancelled
+        return
+    }
+    
+    GuiControl,, StatusText, Downloading update...
+    
+    if (DownloadUpdate())
+    {
+        MsgBox, 4, Update Complete, Update downloaded successfully!`n`nThe script needs to restart to apply the update. Restart now?
+        
+        IfMsgBox Yes
+        {
+            Run, %A_ScriptFullPath%
+            ExitApp
+        }
+    }
+    else
+    {
+        MsgBox, Update failed! Please download manually.
+        GuiControl,, StatusText, Update failed
+    }
+return
+
+BtnHelp:
     helpText = 
     (
 FTROOP MACRO PRO v%SCRIPT_VERSION%
@@ -131,26 +275,20 @@ through bases to build units.
 HOTKEYS:
 F10      - Record unit position on screen
 F11      - Execute building cycle 
+F12      - Pause/Resume build cycle (NEW!)
 ESC      - Exit program
 
-
 QUICK START:
+1. Start at base 1
+2. Hover mouse over unit you want to build and press F10
+3. Enter unit count and delay time between builds
+4. Use arrow keys to navigate to next base
+5. Press F10 over each new unit at subsequent bases 
+6. Press F11 to start building
 
-1. Start at base 1.
-
-2. Hover mouse over unit you want to build and Click F10 
-
-3. If you need a timer to let resources refill, do so at this step.
-
-4. Enter unit count and delay time between builds
-
-5. If you are producing on a single base, click no at this step.  If you are producing on multiple bases, continue to next steps.
-
-6. Use arrow keys to navigate to next base
-
-7. Press F10 at each new base you want to produce units.
-
-8. Press F11 to start building when you are finished adding bases.
+NEW FEATURES v4.1:
+✓ Pause/Resume with F12
+✓ Screen stays awake during long delays
 
 FEATURES:
  Multiple base support
@@ -158,80 +296,38 @@ FEATURES:
  Resource refill delay
  Auto-return to Base 1
  Real-time status updates
- Auto-update Macro "When available"
- Game Window focus management
+ Auto-update capability
+ Game window focus management
 
 IMPORTANT:
  Don't move map during execution
  Game must remain visible
-
-
-
     )
     
-    ; Show the help in a message box
     MsgBox, %helpText%
-return
-    ; New version available
-    MsgBox, 4, Update Available, New version %latestVersion% is available!`n`nCurrent version: %SCRIPT_VERSION%`nLatest version: %latestVersion%`n`nUpdate now?
-    
-    IfMsgBox No
-    {
-        GuiControl,, StatusText, Update cancelled
-        return
-    }
-    
-    ; Download and update
-    GuiControl,, StatusText, Downloading update...
-    
-    if (DownloadUpdate())
-    {
-        MsgBox, 4, Update Complete, Update downloaded successfully!`n`nThe script needs to restart to apply the update. Restart now?
-        
-        IfMsgBox Yes
-        {
-            ; Restart the script
-            Run, %A_ScriptFullPath%
-            ExitApp
-        }
-    }
-    else
-    {
-        MsgBox, Update failed! Please download manually.
-        GuiControl,, StatusText, Update failed
-    }
 return
 
 CheckForUpdates() {
     global VERSION_CHECK_URL
     
     try {
-        ; Add timestamp to prevent GitHub caching
         cacheBusterURL := VERSION_CHECK_URL . "?t=" . A_Now
         
-        ; Create HTTP request object
         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
         whr.Open("GET", cacheBusterURL, true)
         whr.Send()
         whr.WaitForResponse()
         
-        ; Get response
         versionText := whr.ResponseText
-        whr := ""  ; Release object
+        whr := ""
         
-        ; ===== SIMPLE EXTRACTION =====
-        ; Remove all non-numeric/dot characters
         versionText := RegExReplace(versionText, "[^\d\.]", "")
-        
-        ; Trim leading/trailing dots
         versionText := Trim(versionText, ".")
         
-        ; If empty, return ERROR
         if (versionText = "")
             return "ERROR"
         
         return versionText
-        ; =============================
     }
     catch {
         return "ERROR"
@@ -242,34 +338,23 @@ DownloadUpdate() {
     global UPDATE_URL, SCRIPT_NAME
     
     try {
-        ; Get the script's directory
         scriptDir := A_ScriptDir
         tempFile := scriptDir . "\" . SCRIPT_NAME . ".new"
         backupFile := scriptDir . "\" . SCRIPT_NAME . ".backup"
         
-        ; ===== ADD CACHE BUSTER =====
-        ; Add timestamp to prevent GitHub caching
         cacheBusterURL := UPDATE_URL . "?t=" . A_Now
-        ; ============================
         
-        ; Download the updated script WITH cache buster
         URLDownloadToFile, %cacheBusterURL%, %tempFile%
         
-        ; Check if download was successful
         FileGetSize, fileSize, %tempFile%
-        if (fileSize < 1000) ; Arbitrary minimum size
+        if (fileSize < 1000)
         {
             FileDelete, %tempFile%
             return false
         }
         
-        ; Create backup of current script
         FileCopy, %A_ScriptFullPath%, %backupFile%, 1
-        
-        ; Replace current script with new one
         FileCopy, %tempFile%, %A_ScriptFullPath%, 1
-        
-        ; Clean up temp file
         FileDelete, %tempFile%
         
         return true
@@ -286,17 +371,13 @@ DownloadUpdate() {
 EnsureGameFocus() {
     global gameWindowClass
     
-    ; If we haven't detected the game window yet, try to detect it
     if (gameWindowClass = "") {
-        ; Store current window
         WinGet, currentActive, ID, A
         WinGetClass, currentClass, ahk_id %currentActive%
         
-        ; If current window is not our GUI, assume it's the game
         if (currentClass != "AutoHotkeyGUI") {
             gameWindowClass := currentClass
         } else {
-            ; Our GUI is active, try to find game window
             WinGet, windowList, List
             Loop, %windowList%
             {
@@ -304,11 +385,9 @@ EnsureGameFocus() {
                 WinGetClass, windowClass, ahk_id %windowID%
                 WinGetTitle, windowTitle, ahk_id %windowID%
                 
-                ; Skip our own GUI and empty titles
                 if (windowClass = "AutoHotkeyGUI" || windowTitle = "")
                     continue
                     
-                ; Look for common game window indicators
                 if (InStr(windowTitle, "FTroop") || InStr(windowTitle, "Game") || InStr(windowTitle, "Troop")) {
                     gameWindowClass := windowClass
                     break
@@ -317,42 +396,37 @@ EnsureGameFocus() {
         }
     }
     
-    ; If we have a game window class, ensure it's active
     if (gameWindowClass != "") {
         IfWinNotActive, ahk_class %gameWindowClass%
         {
             WinActivate, ahk_class %gameWindowClass%
             WinWaitActive, ahk_class %gameWindowClass%, , 1.5
-            Sleep, 150  ; Allow window to fully activate
-            return true  ; Focus was restored
+            Sleep, 150
+            return true
         }
     }
-    return false  ; Already had focus or unknown window
+    return false
 }
 
 UpdateStatus(message, isCritical := false) {
     static lastUpdate := 0
-    static minUpdateInterval := 250  ; Don't update GUI more than every 250ms
+    static minUpdateInterval := 250
     
-    ; Store current time
     currentTime := A_TickCount
     
-    ; For critical operations, skip GUI if too recent to avoid timing issues
     if (isCritical && (currentTime - lastUpdate < minUpdateInterval)) {
-        ; Use ToolTip only for immediate feedback during critical ops
-        ToolTip, %message%
+        ShowTooltip(message)
         return
     }
     
-    ; Update GUI status (non-critical or enough time has passed)
     GuiControl,, StatusText, %message%
-    ToolTip, %message%
+    ShowTooltip(message)
     lastUpdate := currentTime
 }
 
 ForceGameFocus:
     EnsureGameFocus()
-    ToolTip, Game focus restored
+    ShowTooltip("Game focus restored")
     Sleep, 1000
     ToolTip
 return
@@ -415,23 +489,19 @@ BtnRecordBase:
         return
     }
     
-    ; Stop arrow recording if active
     if isRecording
     {
         isRecording := false
         ToolTip
     }
     
-    ; Get build position
     MouseGetPos, bx, by
     
-    ; Count existing bases
     baseNum := bases.MaxIndex()
     if baseNum is not number
         baseNum := 0
     baseNum := baseNum + 1
     
-    ; Ask about resource refill delay for Base 1 only
     if (baseNum = 1)
     {
         MsgBox, 4, Resource Refill, Do you need a resource refill delay?`n`nThis will make the script wait at Base 1 after each full cycle through all bases to allow resources to replenish.
@@ -455,7 +525,6 @@ BtnRecordBase:
         }
     }
     
-    ; Get units
     InputBox, units, Base %baseNum%, How many units to build at Base %baseNum%?
     if ErrorLevel
     {
@@ -470,7 +539,6 @@ BtnRecordBase:
         return
     }
     
-    ; Get delay
     InputBox, delay, Base %baseNum%, Delay between builds (seconds)?
     if ErrorLevel
     {
@@ -485,7 +553,6 @@ BtnRecordBase:
         return
     }
     
-    ; Create base object
     newBase := Object()
     newBase.x := bx
     newBase.y := by
@@ -494,7 +561,6 @@ BtnRecordBase:
     newBase.remaining := units
     newBase.arrows := Object()
     
-    ; Copy arrow keys
     maxIdx := arrowKeys.MaxIndex()
     if maxIdx is number
     {
@@ -506,7 +572,6 @@ BtnRecordBase:
     
     bases[baseNum] := newBase
     
-    ; Update GUI
     Gosub, UpdateGUI
     
     total := bases.MaxIndex()
@@ -527,7 +592,6 @@ BtnRecordBase:
             isRecording := true
             nextBase := baseNum + 1
             
-            ; Click on game screen to restore focus
             Click, %bx%, %by%, 0
             Sleep, 200
             
@@ -551,7 +615,6 @@ BtnRecordBase:
         isRecording := true
         nextBase := baseNum + 1
         
-        ; Click on game screen to restore focus
         Click, %bx%, %by%, 0
         Sleep, 200
         
@@ -561,7 +624,6 @@ BtnRecordBase:
     {
         arrowKeys := Object()
         
-        ; Auto-return to Base 1 by reversing all recorded arrows
         if (baseNum > 1)
         {
             resMsg := ""
@@ -571,10 +633,10 @@ BtnRecordBase:
             MsgBox, Recording complete!`n`n%total% bases recorded.%resMsg%`n`nReturning to Base 1 automatically...
             Sleep, 1000
             
-            ; Reverse arrows from all bases to get back to Base 1
             Loop, %total%
             {
                 reverseIdx := total - A_Index + 1
+                
                 if (reverseIdx > 0)
                 {
                     baseToReverse := bases[reverseIdx]
@@ -614,7 +676,7 @@ BtnRecordBase:
 return
 
 ; ═══════════════════════════════════════════════════════════
-; EXECUTE (F11) - WITH 3-2-1 COUNTDOWN
+; EXECUTE (F11) - WITH PAUSE SUPPORT
 ; ═══════════════════════════════════════════════════════════
 BtnExecute:
     total := bases.MaxIndex()
@@ -627,7 +689,6 @@ BtnExecute:
         return
     }
     
-    ; Show summary
     summary := "`nEXECUTION SUMMARY`n`n`n"
     
     Loop, %total%
@@ -649,30 +710,28 @@ BtnExecute:
     IfMsgBox No
         return
     
-    ; Add 3-2-1 countdown to give user time to remove hand from mouse
     UpdateStatus("Starting macro in 3...")
-    ToolTip, Starting macro in 3...
+    ShowTooltip("Starting macro in 3...")
     Sleep, 1000
     
     UpdateStatus("Starting macro in 2...")
-    ToolTip, Starting macro in 2...
+    ShowTooltip("Starting macro in 2...")
     Sleep, 1000
     
     UpdateStatus("Starting macro in 1...")
-    ToolTip, Starting macro in 1...
+    ShowTooltip("Starting macro in 1...")
     Sleep, 1000
     
-    ; Brief pause to ensure mouse is clear
     UpdateStatus("Starting now! Remove mouse...")
-    ToolTip, Starting now! Remove mouse...
+    ShowTooltip("Starting now! Remove mouse...")
     Sleep, 500
     
-    ToolTip  ; Clear tooltip
+    ToolTip
     
     building := true
+    isPaused := false
     restartCycle := false
     
-    ; Track remaining units and last build time for each base
     remaining := Object()
     lastBuildTime := Object()
     
@@ -683,34 +742,35 @@ BtnExecute:
         lastBuildTime[A_Index] := 0
     }
     
-    ; Main build loop - continuous cycles through all bases
+    ; Main build loop
     Loop
     {
-        ; Check for restart request
+        ; Check for pause
+        while (isPaused)
+        {
+            Sleep, 100
+        }
+        
         if (restartCycle)
         {
             restartCycle := false
             UpdateStatus("Restarting cycle...")
-            ToolTip, Restarting cycle - returning to Base 1...
+            ShowTooltip("Restarting cycle - returning to Base 1...")
             Sleep, 1000
             
-            ; Force wait for Base 1 timer before continuing
             if (lastBuildTime[1] > 0)
             {
                 base1Obj := bases[1]
                 buildTimeMs := base1Obj.delay * 1000
                 
-                ; Calculate wait time with wrap-around protection
                 currentTime := A_TickCount
                 timeSinceLastBuild := currentTime - lastBuildTime[1]
                 
-                ; Handle A_TickCount wrap-around
                 if (timeSinceLastBuild < 0)
                     timeSinceLastBuild := (4294967295 - lastBuildTime[1]) + currentTime
                 
                 timeLeft := buildTimeMs - timeSinceLastBuild
                 
-                ; Safety check - if timeLeft is unreasonable, don't wait
                 if (timeLeft > (buildTimeMs + 10000) || timeLeft < 0)
                     timeLeft := 0
                 
@@ -719,12 +779,11 @@ BtnExecute:
                     secondsLeft := Round(timeLeft / 1000)
                     UpdateStatus("Waiting for Base 1: " . secondsLeft . "s")
                     
-                    ; Real-time countdown
                     startTime := A_TickCount
                     targetTime := startTime + timeLeft
                     lastDisplayed := secondsLeft
                     
-                    while (A_TickCount < targetTime && !restartCycle)
+                    while (A_TickCount < targetTime && !restartCycle && !isPaused)
                     {
                         currentTime := A_TickCount
                         timeRemaining := targetTime - currentTime
@@ -733,7 +792,6 @@ BtnExecute:
                         {
                             secondsRemaining := Round(timeRemaining / 1000)
                             
-                            ; Update only when second count changes
                             if (secondsRemaining != lastDisplayed)
                             {
                                 UpdateStatus("Waiting for Base 1: " . secondsRemaining . "s")
@@ -741,24 +799,23 @@ BtnExecute:
                             }
                         }
                         
-                        Sleep, 100  ; Short sleep for responsiveness
+                        Sleep, 100
                         
-                        if (restartCycle)
+                        if (restartCycle || isPaused)
                             break
                     }
                     
-                    if (!restartCycle)
+                    if (!restartCycle && !isPaused)
                         UpdateStatus("Base 1 ready!")
                 }
             }
             
             UpdateStatus("Restarting cycle...")
-            ToolTip, Base 1 ready! Restarting cycle...
+            ShowTooltip("Base 1 ready! Restarting cycle...")
             Sleep, 1000
             continue
         }
         
-        ; Check if all done
         done := true
         Loop, %total%
         {
@@ -769,7 +826,6 @@ BtnExecute:
         if done
             break
         
-        ; Check if Base 1 is ready (this gates the entire cycle)
         if (remaining[1] > 0)
         {
             currentTime := A_TickCount
@@ -778,31 +834,24 @@ BtnExecute:
                 base1Obj := bases[1]
                 buildTimeMs := base1Obj.delay * 1000
                 
-                ; Handle A_TickCount wrap-around properly
                 timeSinceLastBuild := currentTime - lastBuildTime[1]
                 if (timeSinceLastBuild < 0)
                 {
-                    ; A_TickCount has wrapped (happens every ~49.7 days)
-                    ; Recalculate using maximum DWORD value
                     timeSinceLastBuild := (4294967295 - lastBuildTime[1]) + currentTime
                 }
                 
                 if (timeSinceLastBuild < buildTimeMs)
                 {
-                    ; Base 1 not ready, wait
                     timeLeft := buildTimeMs - timeSinceLastBuild
                     
-                    ; Safety check - if timeLeft is unreasonable, reset timer
-                    if (timeLeft > (buildTimeMs + 10000) || timeLeft < 0)  ; More than 10 seconds over expected or negative
+                    if (timeLeft > (buildTimeMs + 10000) || timeLeft < 0)
                     {
-                        ; Timing calculation error - reset and continue
                         lastBuildTime[1] := currentTime
                         UpdateStatus("Timer adjusted - continuing", true)
                         Sleep, 500
                         continue
                     }
                     
-                    ; Cap the wait time to maximum allowed
                     if (timeLeft > maxWaitTime)
                         timeLeft := maxWaitTime
                     
@@ -812,23 +861,27 @@ BtnExecute:
                     {
                         UpdateStatus("Waiting for Base 1: " . secondsLeft . "s", true)
                         
-                        ; Real-time countdown with 1-second updates
                         startTime := A_TickCount
                         targetTime := startTime + timeLeft
                         lastDisplayedSecond := secondsLeft
+                        lastJiggle := startTime
                         
-                        while (A_TickCount < targetTime && !restartCycle)
+                        while (A_TickCount < targetTime && !restartCycle && !isPaused)
                         {
-                            ; Calculate remaining time
                             currentTime := A_TickCount
                             timeRemaining := targetTime - currentTime
                             
-                            ; Update every second or if significant time change
+                            ; Screen awake jiggle for long waits
+                            if (secondsLeft >= 60 && (currentTime - lastJiggle) > 30000)
+                            {
+                                PerformScreenJiggle()
+                                lastJiggle := currentTime
+                            }
+                            
                             if (timeRemaining > 0)
                             {
                                 secondsRemaining := Round(timeRemaining / 1000)
                                 
-                                ; Only update if the second count changed
                                 if (secondsRemaining != lastDisplayedSecond)
                                 {
                                     UpdateStatus("Waiting for Base 1: " . secondsRemaining . "s", true)
@@ -836,23 +889,19 @@ BtnExecute:
                                 }
                             }
                             
-                            ; Sleep for a short time but check frequently
-                            Sleep, 100  ; Check 10 times per second
+                            Sleep, 100
                             
-                            ; Quick check for restart request
-                            if (restartCycle)
+                            if (restartCycle || isPaused)
                             {
-                                UpdateStatus("Restart requested...")
+                                UpdateStatus("Wait interrupted...")
                                 break
                             }
                         }
                         
-                        ; Final update when done
-                        if (!restartCycle)
+                        if (!restartCycle && !isPaused)
                             UpdateStatus("Base 1 ready!", true)
                         
-                        ; If restart was requested during wait, handle it
-                        if (restartCycle)
+                        if (restartCycle || isPaused)
                             continue
                     }
                     continue
@@ -860,26 +909,28 @@ BtnExecute:
             }
         }
         
-        ; Go through bases sequentially: 1 → 2 → 3 → ... → N
+        ; Go through bases
         Loop, %total%
         {
+            ; Check for pause at start of each base
+            while (isPaused)
+            {
+                Sleep, 100
+            }
+            
             i := A_Index
             baseObj := bases[i]
             
-            ; Skip if no units left at this base
             if (remaining[i] <= 0)
                 continue
             
-            ; Navigate to base (all bases except Base 1)
             if (i > 1)
             {
                 UpdateStatus("Going to Base " . i, true)
                 
-                ; Ensure game has focus before navigation
                 EnsureGameFocus()
-                Sleep, 150  ; Reduced consistent delay
+                Sleep, 150
                 
-                ; Send arrow keys FROM PREVIOUS BASE
                 maxArrows := baseObj.arrows.MaxIndex()
                 if maxArrows is number
                 {
@@ -887,54 +938,46 @@ BtnExecute:
                     {
                         arrow := baseObj.arrows[A_Index]
                         
-                        ; Quick focus check every few keys
                         if (Mod(A_Index, 3) = 0)
                             EnsureGameFocus()
                         
                         SendInput, {%arrow%}
-                        Sleep, 100  ; Keep consistent timing
+                        Sleep, 100
                     }
                 }
                 
-                Sleep, 500  ; Reduced consistent delay
+                Sleep, 500
             }
             
-            ; Build with wiggle
-            remCount := remaining[i]
+                       remCount := remaining[i]
             UpdateStatus("Building at Base " . i . " - Remaining: " . remCount, true)
             
-            ; Ensure focus before clicking
             EnsureGameFocus()
+            Sleep, 200
             
-            ; Wiggle mouse to activate build window
+            ; Simple mouse wiggle that worked in the old version
             MouseMove, baseObj.x + 5, baseObj.y + 5, 0
             Sleep, 50
             MouseMove, baseObj.x, baseObj.y, 0
             Sleep, 100
             
-            ; Final focus check right before click
             EnsureGameFocus()
             Click
             
-            ; Mark as built
             remaining[i] := remaining[i] - 1
             lastBuildTime[i] := A_TickCount
             
-            ; Update GUI (non-critical timing)
             baseObj.remaining := remaining[i]
-            if (Mod(i, 2) = 0 || i = 1)  ; Update every other base to reduce GUI overhead
+            if (Mod(i, 2) = 0 || i = 1)
                 Gosub, UpdateGUI
             
-            ; Wait 2 seconds after initiating build
             Sleep, 2000
         }
         
-        ; After reaching last base, return to Base 1 by reversing all paths
         UpdateStatus("Returning to Base 1...", true)
         EnsureGameFocus()
-        Sleep, 200  ; Reduced delay
+        Sleep, 200
         
-        ; Reverse from last base back through all bases to Base 1
         Loop, %total%
         {
             reverseIdx := total - A_Index + 1
@@ -942,7 +985,6 @@ BtnExecute:
             if (reverseIdx < 1)
                 break
             
-            ; Don't reverse Base 1 (it has no arrows)
             if (reverseIdx = 1)
                 break
             
@@ -973,12 +1015,11 @@ BtnExecute:
             Sleep, 500
         }
         
-        Sleep, 500  ; Reduced consistent delay
+        Sleep, 500
         
-        ; Resource refill delay (after returning to Base 1, if more units remain)
+        ; Resource refill with screen awake
         if (resourceDelay > 0)
         {
-            ; Check if more units remaining
             moreUnits := false
             Loop, %total%
             {
@@ -993,28 +1034,34 @@ BtnExecute:
             {
                 delayMs := resourceDelay * 1000
                 
-                ; Cap resource delay to reasonable maximum
                 if (delayMs > maxWaitTime)
                     delayMs := maxWaitTime
                 
-                ; Single status update
                 UpdateStatus("Waiting for resources (" . resourceDelay . "s)...")
                 
-                ; Real-time countdown for resource delay
+                needsJiggle := KeepScreenAwake(resourceDelay)
+                
                 startTime := A_TickCount
                 targetTime := startTime + delayMs
                 lastDisplayed := resourceDelay
+                lastJiggle := startTime
                 
-                while (A_TickCount < targetTime && !restartCycle)
+                while (A_TickCount < targetTime && !restartCycle && !isPaused)
                 {
                     currentTime := A_TickCount
                     timeRemaining := targetTime - currentTime
+                    
+                    ; Perform screen jiggle every 30 seconds for long delays
+                    if (needsJiggle && (currentTime - lastJiggle) > 30000)
+                    {
+                        PerformScreenJiggle()
+                        lastJiggle := currentTime
+                    }
                     
                     if (timeRemaining > 0)
                     {
                         secondsRemaining := Round(timeRemaining / 1000)
                         
-                        ; Update only when second count changes
                         if (secondsRemaining != lastDisplayed)
                         {
                             UpdateStatus("Resources in: " . secondsRemaining . "s")
@@ -1022,47 +1069,45 @@ BtnExecute:
                         }
                     }
                     
-                    Sleep, 100  ; Short sleep for responsiveness
+                    Sleep, 100
                     
-                    if (restartCycle)
+                    if (restartCycle || isPaused)
                     {
-                        UpdateStatus("Restart during resource wait...")
+                        UpdateStatus("Resource wait interrupted...")
                         break
                     }
                 }
                 
-                ; If not restarting, brief focus check before continuing
-                if (!restartCycle)
+                if (!restartCycle && !isPaused)
                 {
                     EnsureGameFocus()
                     Sleep, 200
                     
-                    ; Update status to show ready
                     UpdateStatus("Resources ready - continuing...")
                     Sleep, 500
                 }
             }
         }
         
-        ; Update GUI at end of cycle (non-critical timing)
-        if (!restartCycle)
+        if (!restartCycle && !isPaused)
             Gosub, UpdateGUI
     }
     
     building := false
+    isPaused := false
     UpdateStatus("Build complete! All units finished.")
     ToolTip
     MsgBox, All units completed at %total% bases!
 return
 
 ; ═══════════════════════════════════════════════════════════
-; RESTART CYCLE (F9 during building)
+; RESTART CYCLE
 ; ═══════════════════════════════════════════════════════════
-F9::  ; Added hotkey definition
+RestartCycle:
     if (building)
     {
         restartCycle := true
-        ToolTip, Cycle restart requested...
+        ShowTooltip("Cycle restart requested...")
         Sleep, 1000
         ToolTip
     }
