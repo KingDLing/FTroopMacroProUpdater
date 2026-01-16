@@ -1,7 +1,145 @@
 #NoEnv
+#NoTrayIcon
+SetBatchLines, -1
+SetWorkingDir, %A_ScriptDir%
 #SingleInstance Force
 CoordMode, Mouse, Screen
 CoordMode, ToolTip, Screen
+CoordMode, Pixel, Screen  ; Add this for pixel detection
+
+; ============================================
+; FTROOP MACRO PRO SEC - PASSWORD PROTECTION
+; ============================================
+global GITHUB_RAW_URL := "https://api.github.com/repos/KingDLing/FTroopMacroProSEC/contents/FTroop.txt"
+global MAX_ATTEMPTS := 3
+global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v4.0"
+
+; Show loading screen
+SplashTextOn, 400, 130, %SCRIPT_NAME_SEC%, Checking license access...`n`nPlease wait...
+Sleep, 500
+
+; Get password from GitHub
+passwordData := GetFromGitHub()
+SplashTextOff
+
+if (passwordData = "ERROR")
+{
+    MsgBox, 48, Connection Failed, 
+    (LTrim
+    Cannot connect to license server!
+    
+    1. Check your internet connection
+    2. Make sure GitHub is not blocked
+    3. Try again later
+    
+    If problem continues, contact support.
+    )
+    ExitApp
+}
+
+; Parse password data (format: password|expiry_date|optional_message)
+passwordParts := StrSplit(passwordData, "|")
+if (passwordParts.Length() < 2)
+{
+    MsgBox, 16, Server Error, Invalid license data received!
+    ExitApp
+}
+
+todayPassword := Trim(passwordParts[1])
+expiryDate := Trim(passwordParts[2])
+customMessage := (passwordParts.Length() >= 3) ? Trim(passwordParts[3]) : ""
+
+; Check if license expired
+FormatTime, currentDate,, yyyy-MM-dd
+if (currentDate > expiryDate)
+{
+    MsgBox, 48, License Expired, 
+    (LTrim
+    Your FTroop Macro Pro SEC license has expired!
+    
+    Expiration date: %expiryDate%
+    Current date: %currentDate%
+    
+    Please renew your license to continue.
+    )
+    ExitApp
+}
+
+; Password input with attempts
+attempts := 0
+success := false
+
+Loop
+{
+    ; Build input box message
+    inputMessage := "FTroop Macro Pro SEC v4.0`n"
+    inputMessage .= "License valid until: " . expiryDate . "`n`n"
+    
+    if (customMessage != "")
+        inputMessage .= customMessage . "`n`n"
+    
+    inputMessage .= "Enter access password:"
+    
+    InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
+    
+    if ErrorLevel  ; User pressed Cancel/X
+    {
+        MsgBox, 36, Exit Confirmation, Are you sure you want to exit?
+        IfMsgBox Yes
+            ExitApp
+        else
+            continue
+    }
+    
+    ; Check password
+    if (userInput = todayPassword)
+    {
+        success := true
+        break
+    }
+    
+    ; Wrong password
+    attempts++
+    remaining := MAX_ATTEMPTS - attempts
+    
+    if (attempts >= MAX_ATTEMPTS)
+    {
+        MsgBox, 16, Access Denied, 
+        (LTrim
+        Maximum attempts reached!
+        
+        Access permanently locked.
+        Contact support for a password reset.
+        )
+        ExitApp
+    }
+    
+    MsgBox, 48, Invalid Password, 
+    (LTrim
+    Incorrect password!
+    
+    Attempts used: %attempts%
+    Remaining attempts: %remaining%
+    
+    Try again or contact support.
+    )
+}
+
+if (!success)
+    ExitApp
+
+; Show welcome message
+MsgBox, 64, Welcome, 
+(LTrim
+FTroop Macro Pro SEC v4.0
+------------------------
+Access granted!
+
+License valid until: %expiryDate%
+
+Click OK to start the application.
+)
+Sleep, 500
 
 ; ═══════════════════════════════════════════════════════════
 ; FTroop Macro Pro 
@@ -16,6 +154,9 @@ global restartCycle := false
 global resourceDelay := 0
 global gameWindowClass := ""
 global maxWaitTime := 120000
+
+; CAPTCHA Detection Settings
+global darkScreenThreshold := 50  ; If average brightness < this, it's a dark/CAPTCHA screen
 
 ; Update Configuration
 global SCRIPT_VERSION := "4.0"
@@ -54,7 +195,7 @@ LV_ModifyCol(5, 120, "Remaining")
 Gui, Add, Text, xm y+10 w600 h2 0x10 Background404040
 
 Gui, Font, s9 c00BFFF Italic
-Gui, Add, Text, xm y+10 w600 vStatusText Center, Press F10 to record bases
+Gui, Add, Text, xm y+10 w600 vStatusText Center, Go to Base 1, Press F10 over the unit you want to build
 
 Gui, Show, w620, FTroop Macro Pro v%SCRIPT_VERSION%
 Gosub, UpdateGUI
@@ -70,12 +211,16 @@ F12::Gosub, TogglePause
 F9::Gosub, RestartCycle
 Esc::ExitApp
 ^!F::Gosub, ForceGameFocus
+^+C::Gosub, CalibrateDarkDetection  ; Add calibration hotkey
 
 ; Arrow key recording
 Up::
 Down::
 Left::
 Right::
+      if (isPaused) {
+        return  ; Don't record arrows while script is paused
+    }
     if isRecording
     {
         lastIdx := arrowKeys.MaxIndex()
@@ -90,6 +235,96 @@ Right::
         ShowTooltip("Recording arrows: " . count . " keys pressed`nPress F10 when at base")
     }
     Send, {%A_ThisHotkey%}
+return
+
+; ═══════════════════════════════════════════════════════════
+; DARK SCREEN DETECTION FOR CAPTCHA
+; ═══════════════════════════════════════════════════════════
+
+CheckForDarkScreen() {
+    ; Get screen dimensions
+    SysGet, screenWidth, 0
+    SysGet, screenHeight, 1
+    
+    ; Sample 5 points in the center area (where CAPTCHA usually appears)
+    points := []
+    points.push([screenWidth // 2, screenHeight // 3])      ; Top center
+    points.push([screenWidth // 2, screenHeight // 2])      ; Middle center
+    points.push([screenWidth // 2, screenHeight * 2 // 3])  ; Bottom center
+    points.push([screenWidth // 3, screenHeight // 2])      ; Left center
+    points.push([screenWidth * 2 // 3, screenHeight // 2])  ; Right center
+    
+    darkPoints := 0
+    
+    ; Check each point
+    for i, point in points {
+        x := point[1]
+        y := point[2]
+        
+        ; Get pixel color
+        PixelGetColor, color, %x%, %y%, RGB
+        
+        ; Extract RGB components
+        red := (color >> 16) & 0xFF
+        green := (color >> 8) & 0xFF
+        blue := color & 0xFF
+        
+        ; Calculate brightness
+        brightness := (red + green + blue) / 3
+        
+        ; Check if point is dark
+        if (brightness < darkScreenThreshold) {
+            darkPoints++
+        }
+    }
+    
+    ; If most points are dark, it's a CAPTCHA screen
+    return (darkPoints >= 3)  ; 3 out of 5 points are dark
+}
+
+CalibrateDarkDetection:
+    MsgBox, 4, Calibrate CAPTCHA Detection, 
+    (LTrim
+    CAPTCHA Detection Calibration
+    
+    Instructions:
+    1. Make sure NO CAPTCHA is visible (normal game screen)
+    2. Click OK to calibrate normal screen brightness
+    
+    Continue?
+    )
+    
+    IfMsgBox No
+        return
+    
+    ; Sample current screen brightness
+    SysGet, screenWidth, 0
+    SysGet, screenHeight, 1
+    
+    ; Sample center point
+    x := screenWidth // 2
+    y := screenHeight // 2
+    
+    PixelGetColor, color, %x%, %y%, RGB
+    red := (color >> 16) & 0xFF
+    green := (color >> 8) & 0xFF
+    blue := color & 0xFF
+    
+    brightness := (red + green + blue) / 3
+    
+    ; Set threshold to 40% of normal brightness
+    ; CAPTCHA screens are usually much darker
+    global darkScreenThreshold := brightness * 0.4
+    
+    ; Ensure minimum threshold
+    if (darkScreenThreshold < 30) {
+        darkScreenThreshold := 30
+    }
+    if (darkScreenThreshold > 80) {
+        darkScreenThreshold := 80
+    }
+    
+    MsgBox, Calibration complete!`n`nNormal brightness: %brightness%`nCAPTCHA threshold: %darkScreenThreshold%`n`nScreen is considered dark/CAPTCHA when brightness < %darkScreenThreshold%
 return
 
 ; ═══════════════════════════════════════════════════════════
@@ -113,8 +348,8 @@ TogglePause:
     }
     else
     {
-        UpdateStatus(" Resuming build...")
-        ShowTooltip(" Resuming...")
+        UpdateStatus("Resuming build...")
+        ShowTooltip("Resuming...")
         Sleep, 1000
         ToolTip
     }
@@ -157,7 +392,7 @@ PerformScreenJiggle() {
 }
 
 ; ═══════════════════════════════════════════════════════════
-; HUMAN-LIKE MOUSE MOVEMENT
+;  MOUSE MOVEMENT
 ; ═══════════════════════════════════════════════════════════
 SmoothMouseMove(targetX, targetY, speed := 10) {
     ; Get current position
@@ -275,20 +510,23 @@ through bases to build units.
 HOTKEYS:
 F10      - Record unit position on screen
 F11      - Execute building cycle 
-F12      - Pause/Resume build cycle (NEW!)
+F12      - Pause/Resume build cycle
+Ctrl+Shift+C - Calibrate CAPTCHA detection
 ESC      - Exit program
+
+NEW CAPTCHA DETECTION:
+ Automatically checks for CAPTCHA after each build
+ Pauses script and plays alert if CAPTCHA detected
+ User solves CAPTCHA manually, then presses F12 to resume
 
 QUICK START:
 1. Start at base 1
-2. Hover mouse over unit you want to build and press F10
+2. Press F10 over the unit you want to build
 3. Enter unit count and delay time between builds
 4. Use arrow keys to navigate to next base
 5. Press F10 over each new unit at subsequent bases 
-6. Press F11 to start building
-
-NEW FEATURES v4.1:
-✓ Pause/Resume with F12
-✓ Screen stays awake during long delays
+6. While in game, Press CNTRL,Shift, C to calibrate normal game screen.
+7. press F11 to start building
 
 FEATURES:
  Multiple base support
@@ -298,7 +536,7 @@ FEATURES:
  Real-time status updates
  Auto-update capability
  Game window focus management
-
+ CapTCHA Detection
 IMPORTANT:
  Don't move map during execution
  Game must remain visible
@@ -467,7 +705,7 @@ UpdateGUI:
     }
     
     if (total = 0)
-        GuiControl,, StatusText, Press F10 to record bases
+        GuiControl,, StatusText, Press F10 over the unit you want to build
     else if (building)
         GuiControl,, StatusText, Building in progress...
     else
@@ -676,7 +914,7 @@ BtnRecordBase:
 return
 
 ; ═══════════════════════════════════════════════════════════
-; EXECUTE (F11) - WITH PAUSE SUPPORT
+; EXECUTE (F11) - WITH SIMPLE CAPTCHA DETECTION
 ; ═══════════════════════════════════════════════════════════
 BtnExecute:
     total := bases.MaxIndex()
@@ -949,13 +1187,13 @@ BtnExecute:
                 Sleep, 500
             }
             
-                       remCount := remaining[i]
+            remCount := remaining[i]
             UpdateStatus("Building at Base " . i . " - Remaining: " . remCount, true)
             
             EnsureGameFocus()
             Sleep, 200
             
-            ; Simple mouse wiggle that worked in the old version
+            ; Mouse wiggle 
             MouseMove, baseObj.x + 5, baseObj.y + 5, 0
             Sleep, 50
             MouseMove, baseObj.x, baseObj.y, 0
@@ -971,7 +1209,35 @@ BtnExecute:
             if (Mod(i, 2) = 0 || i = 1)
                 Gosub, UpdateGUI
             
-            Sleep, 2000
+            Sleep, 1500  ; Wait a bit before checking for CAPTCHA
+            
+            ; ═══════════════════════════════════════════════════════════
+            ; CAPTCHA DETECTION - CHECK AFTER EACH UNIT BUILT
+            ; ═══════════════════════════════════════════════════════════
+            if (CheckForDarkScreen()) {
+                ; CAPTCHA DETECTED!
+                global isPaused := true
+                UpdateStatus("⚠ CAPTCHA DETECTED - Script PAUSED", true)
+                
+                ; Play audible alert
+                SoundPlay, %A_WinDir%\Media\Windows Notify.wav
+                Sleep, 300
+                SoundBeep, 800, 500
+                Sleep, 300
+                SoundBeep, 600, 500
+                
+                ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume")
+                
+                ; Wait here until user solves CAPTCHA and presses F12
+                while (isPaused) {
+                    Sleep, 100
+                }
+                
+                UpdateStatus(" Resuming after CAPTCHA...")
+                ShowTooltip(" Resuming...")
+                Sleep, 1000
+                ToolTip
+            }
         }
         
         UpdateStatus("Returning to Base 1...", true)
@@ -1119,9 +1385,32 @@ return
 BtnClear:
     if building
     {
-        MsgBox, Cannot clear while building!
-        return
+        MsgBox, 4, Stop Building?, This will STOP the current build cycle and clear all bases.`n`nAre you sure?
+        IfMsgBox No
+            return
+        
+        ; Stop the building process
+        building := false
+        isPaused := false
+        restartCycle := false
+        ToolTip  ; Clear any tooltips
     }
+    else
+    {
+        MsgBox, 4, Clear, Clear all bases?
+        IfMsgBox No
+            return
+    }
+    
+    ; Clear everything
+    bases := Object()
+    isRecording := false
+    arrowKeys := Object()
+    resourceDelay := 0
+    Gosub, UpdateGUI
+    UpdateStatus("All bases cleared - ready to record new sequence")
+    MsgBox, Cleared!
+return
     
     MsgBox, 4, Clear, Clear all bases?
     IfMsgBox Yes
@@ -1141,5 +1430,39 @@ return
 BtnExit:
 GuiClose:
     ExitApp
+; ============================================
+; GITHUB PASSWORD FUNCTION
+; ============================================
+GetFromGitHub() {
+    try {
+        ; Your fine-grained token
+        token := "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"
+        
+        ; Direct URL to the raw file
+        url := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProSEC/main/FTroop.txt"
+        
+        ; Create HTTP request
+        whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+        whr.Open("GET", url, false)
+        whr.SetRequestHeader("Authorization", "Bearer " . token)
+        whr.SetRequestHeader("User-Agent", "FTroopMacroPro/4.0")
+        whr.Send()
+        
+        ; Check response
+        status := whr.Status
+        if (status = 200) {
+            response := Trim(whr.ResponseText)
+            
+            ; Clean up any extra whitespace or hidden characters
+            response := RegExReplace(response, "[^\x20-\x7E\r\n]", "")
+            response := Trim(response, "`r`n")
+            
+            return response
+        } else {
+            return "ERROR"
+        }
+    } catch {
+        return "ERROR"
+    }
+}
 return
-
