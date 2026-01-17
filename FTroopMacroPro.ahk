@@ -1400,7 +1400,7 @@ GuiClose:
 
 GetFromGitHub() {
     try {
-        token := "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"
+        token := "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"
         url := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProSEC/refs/heads/main/FTroop.txt?token=GHSAT0AAAAAADTAPG27SBDUDZJTCFIT5QQK2LJWWKQ"
         
         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
@@ -1423,3 +1423,4 @@ GetFromGitHub() {
     }
 }
 return
+
