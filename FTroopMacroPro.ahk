@@ -5,39 +5,24 @@ SetWorkingDir, %A_ScriptDir%
 #SingleInstance Force
 CoordMode, Mouse, Screen
 CoordMode, ToolTip, Screen
-CoordMode, Pixel, Screen  ; Add this for pixel detection
+CoordMode, Pixel, Screen
 
-; ============================================
-; FTROOP MACRO PRO SEC - PASSWORD PROTECTION
-; ============================================
 global GITHUB_RAW_URL := "https://api.github.com/repos/KingDLing/FTroopMacroProSEC/contents/FTroop.txt"
 global MAX_ATTEMPTS := 3
 global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v4.0"
 
-; Show loading screen
 SplashTextOn, 400, 130, %SCRIPT_NAME_SEC%, Checking license access...`n`nPlease wait...
 Sleep, 500
 
-; Get password from GitHub
 passwordData := GetFromGitHub()
 SplashTextOff
 
 if (passwordData = "ERROR")
 {
-    MsgBox, 48, Connection Failed, 
-    (LTrim
-    Cannot connect to license server!
-    
-    1. Check your internet connection
-    2. Make sure GitHub is not blocked
-    3. Try again later
-    
-    If problem continues, contact support.
-    )
+    MsgBox, 48, Connection Failed, Cannot connect to license server!`n`n1. Check your internet connection`n2. Make sure GitHub is not blocked`n3. Try again later`n`nIf problem continues, contact support.
     ExitApp
 }
 
-; Parse password data (format: password|expiry_date|optional_message)
 passwordParts := StrSplit(passwordData, "|")
 if (passwordParts.Length() < 2)
 {
@@ -49,40 +34,26 @@ todayPassword := Trim(passwordParts[1])
 expiryDate := Trim(passwordParts[2])
 customMessage := (passwordParts.Length() >= 3) ? Trim(passwordParts[3]) : ""
 
-; Check if license expired
 FormatTime, currentDate,, yyyy-MM-dd
 if (currentDate > expiryDate)
 {
-    MsgBox, 48, License Expired, 
-    (LTrim
-    Your FTroop Macro Pro SEC license has expired!
-    
-    Expiration date: %expiryDate%
-    Current date: %currentDate%
-    
-    Please renew your license to continue.
-    )
+    MsgBox, 48, License Expired, Your FTroop Macro Pro SEC license has expired!`n`nExpiration date: %expiryDate%`nCurrent date: %currentDate%`n`nPlease renew your license to continue.
     ExitApp
 }
 
-; Password input with attempts
 attempts := 0
 success := false
 
 Loop
 {
-    ; Build input box message
-    inputMessage := "FTroop Macro Pro SEC v4.0`n"
-    inputMessage .= "License valid until: " . expiryDate . "`n`n"
-    
+    inputMessage := "FTroop Macro Pro SEC v4.0`nLicense valid until: " . expiryDate . "`n`n"
     if (customMessage != "")
         inputMessage .= customMessage . "`n`n"
-    
     inputMessage .= "Enter access password:"
     
     InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
     
-    if ErrorLevel  ; User pressed Cancel/X
+    if ErrorLevel
     {
         MsgBox, 36, Exit Confirmation, Are you sure you want to exit?
         IfMsgBox Yes
@@ -91,82 +62,50 @@ Loop
             continue
     }
     
-    ; Check password
     if (userInput = todayPassword)
     {
         success := true
         break
     }
     
-    ; Wrong password
     attempts++
     remaining := MAX_ATTEMPTS - attempts
     
     if (attempts >= MAX_ATTEMPTS)
     {
-        MsgBox, 16, Access Denied, 
-        (LTrim
-        Maximum attempts reached!
-        
-        Access permanently locked.
-        Contact support for a password reset.
-        )
+        MsgBox, 16, Access Denied, Maximum attempts reached!`n`nAccess permanently locked.`nContact support for a password reset.
         ExitApp
     }
     
-    MsgBox, 48, Invalid Password, 
-    (LTrim
-    Incorrect password!
-    
-    Attempts used: %attempts%
-    Remaining attempts: %remaining%
-    
-    Try again or contact support.
-    )
+    MsgBox, 48, Invalid Password, Incorrect password!`n`nAttempts used: %attempts%`nRemaining attempts: %remaining%`n`nTry again or contact support.
 }
 
 if (!success)
     ExitApp
 
-; Show welcome message
-MsgBox, 64, Welcome, 
-(LTrim
-FTroop Macro Pro SEC v4.0
-------------------------
-Access granted!
-
-License valid until: %expiryDate%
-
-Click OK to start the application.
-)
+MsgBox, 64, Welcome, FTroop Macro Pro SEC v4.0`n------------------------`nAccess granted!`n`nLicense valid until: %expiryDate%`n`nClick OK to start the application.
 Sleep, 500
-
-; ═══════════════════════════════════════════════════════════
-; FTroop Macro Pro 
-; ═══════════════════════════════════════════════════════════
 
 global bases := Object()
 global isRecording := false
 global arrowKeys := Object()
 global building := false
-global isPaused := false  
+global isPaused := false
 global restartCycle := false
 global resourceDelay := 0
 global gameWindowClass := ""
 global maxWaitTime := 120000
-
-; CAPTCHA Detection Settings
-global darkScreenThreshold := 50  ; If average brightness < this, it's a dark/CAPTCHA screen
-
-; Update Configuration
+global beepTimerActive := false
+global beepTimerInterval := 10000
+global darkScreenThreshold := 50
+global lastClickedBase := 0
+global lastClickedX := 0
+global lastClickedY := 0
 global SCRIPT_VERSION := "4.0"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacroPro.ahk"
 
-; ─────────────────────────────────────────────
-; GUI
-; ─────────────────────────────────────────────
 Gui, Color, 0F0F0F
 Gui, Font, s13 Bold cFFD700
 Gui, Add, Text, Center w600 y15, FTroop Macro Pro v%SCRIPT_VERSION%
@@ -177,50 +116,56 @@ Gui, Add, Button, xm y+10 w580 h40 gBtnClear, Clear All Bases
 Gui, Add, Button, xm y+5 w580 h40 gBtnUpdate, Check for Updates
 Gui, Add, Button, xm y+5 w580 h40 gBtnExit, Exit
 Gui, Add, Button, xm y+5 w580 h40 gBtnHelp, Help / Instructions
-; Separator line
 Gui, Add, Text, xm y+15 w600 h2 0x10 Background404040
-
 Gui, Font, s10 Bold cFFD700
 Gui, Add, Text, xm y+15 w600, Base Configuration
 
 Gui, Font, s9 cBlack Normal
-Gui, Add, ListView, xm y+10 w600 h150 vBaseListView -Multi Grid BackgroundWhite cBlack, Base #|Units|Delay (s)|Arrows|Remaining
+Gui, Add, ListView, xm y+10 w600 h150 vBaseListView -Multi Grid BackgroundWhite cBlack gBaseListView, Base #|Units|Delay (s)|Arrows|Remaining
 LV_ModifyCol(1, 100, "Base #")
 LV_ModifyCol(2, 100, "Units")
 LV_ModifyCol(3, 110, "Delay (s)")
 LV_ModifyCol(4, 100, "Arrows")
 LV_ModifyCol(5, 120, "Remaining")
 
-; Separator line
 Gui, Add, Text, xm y+10 w600 h2 0x10 Background404040
 
-Gui, Font, s9 c00BFFF Italic
+Gui, Font, s9 cEEEEEE Normal
+Gui, Add, GroupBox, xm y+10 w600 h90, Quick Edit (While Paused)
+Gui, Add, Text, xp+10 yp+25, Base #:
+Gui, Font, s9 c000000 Normal
+Gui, Add, Edit, x+5 yp-3 w50 vEditBaseNumber BackgroundWhite, 1
+Gui, Font, s9 cEEEEEE Normal
+Gui, Add, Text, x+15, Units:
+Gui, Font, s9 c000000 Normal
+Gui, Add, Edit, x+5 yp-3 w70 vEditUnits BackgroundWhite
+Gui, Font, s9 cEEEEEE Normal
+Gui, Add, Text, x+15, Delay (s):
+Gui, Font, s9 c000000 Normal
+Gui, Add, Edit, x+5 yp-3 w70 vEditDelay BackgroundWhite
+Gui, Font, s9 cEEEEEE Normal
+Gui, Add, Button, x+15 yp-3 w80 h25 gBtnUpdateBase, Update Base
+Gui, Add, Button, xm+510 y+5 w80 h25 gBtnRefreshList, Refresh List
 Gui, Add, Text, xm y+10 w600 vStatusText Center, Go to Base 1, Press F10 over the unit you want to build
 
 Gui, Show, w620, FTroop Macro Pro v%SCRIPT_VERSION%
 Gosub, UpdateGUI
 return
 
-; ─────────────────────────────────────────────
-; Hotkeys
-; ─────────────────────────────────────────────
-
 F10::Gosub, BtnRecordBase
 F11::Gosub, BtnExecute
-F12::Gosub, TogglePause  
+F12::Gosub, TogglePause
 F9::Gosub, RestartCycle
 Esc::ExitApp
 ^!F::Gosub, ForceGameFocus
-^+C::Gosub, CalibrateDarkDetection  ; Add calibration hotkey
+^+C::Gosub, CalibrateDarkDetection
 
-; Arrow key recording
 Up::
 Down::
 Left::
 Right::
-      if (isPaused) {
-        return  ; Don't record arrows while script is paused
-    }
+    if (isPaused)
+        return
     if isRecording
     {
         lastIdx := arrowKeys.MaxIndex()
@@ -237,71 +182,45 @@ Right::
     Send, {%A_ThisHotkey%}
 return
 
-; ═══════════════════════════════════════════════════════════
-; DARK SCREEN DETECTION FOR CAPTCHA
-; ═══════════════════════════════════════════════════════════
-
 CheckForDarkScreen() {
-    ; Get screen dimensions
     SysGet, screenWidth, 0
     SysGet, screenHeight, 1
     
-    ; Sample 5 points in the center area (where CAPTCHA usually appears)
     points := []
-    points.push([screenWidth // 2, screenHeight // 3])      ; Top center
-    points.push([screenWidth // 2, screenHeight // 2])      ; Middle center
-    points.push([screenWidth // 2, screenHeight * 2 // 3])  ; Bottom center
-    points.push([screenWidth // 3, screenHeight // 2])      ; Left center
-    points.push([screenWidth * 2 // 3, screenHeight // 2])  ; Right center
+    points.push([screenWidth // 2, screenHeight // 3])
+    points.push([screenWidth // 2, screenHeight // 2])
+    points.push([screenWidth // 2, screenHeight * 2 // 3])
+    points.push([screenWidth // 3, screenHeight // 2])
+    points.push([screenWidth * 2 // 3, screenHeight // 2])
     
     darkPoints := 0
     
-    ; Check each point
     for i, point in points {
         x := point[1]
         y := point[2]
         
-        ; Get pixel color
         PixelGetColor, color, %x%, %y%, RGB
-        
-        ; Extract RGB components
         red := (color >> 16) & 0xFF
         green := (color >> 8) & 0xFF
         blue := color & 0xFF
-        
-        ; Calculate brightness
         brightness := (red + green + blue) / 3
         
-        ; Check if point is dark
-        if (brightness < darkScreenThreshold) {
+        if (brightness < darkScreenThreshold)
             darkPoints++
-        }
     }
     
-    ; If most points are dark, it's a CAPTCHA screen
-    return (darkPoints >= 3)  ; 3 out of 5 points are dark
+    return (darkPoints >= 3)
 }
 
 CalibrateDarkDetection:
-    MsgBox, 4, Calibrate CAPTCHA Detection, 
-    (LTrim
-    CAPTCHA Detection Calibration
-    
-    Instructions:
-    1. Make sure NO CAPTCHA is visible (normal game screen)
-    2. Click OK to calibrate normal screen brightness
-    
-    Continue?
-    )
+    MsgBox, 4, Calibrate CAPTCHA Detection, CAPTCHA Detection Calibration`n`nInstructions:`n1. Make sure NO CAPTCHA is visible (normal game screen)`n2. Click OK to calibrate normal screen brightness`n`nContinue?
     
     IfMsgBox No
         return
     
-    ; Sample current screen brightness
     SysGet, screenWidth, 0
     SysGet, screenHeight, 1
     
-    ; Sample center point
     x := screenWidth // 2
     y := screenHeight // 2
     
@@ -309,27 +228,18 @@ CalibrateDarkDetection:
     red := (color >> 16) & 0xFF
     green := (color >> 8) & 0xFF
     blue := color & 0xFF
-    
     brightness := (red + green + blue) / 3
     
-    ; Set threshold to 40% of normal brightness
-    ; CAPTCHA screens are usually much darker
     global darkScreenThreshold := brightness * 0.4
     
-    ; Ensure minimum threshold
-    if (darkScreenThreshold < 30) {
+    if (darkScreenThreshold < 30)
         darkScreenThreshold := 30
-    }
-    if (darkScreenThreshold > 80) {
+    if (darkScreenThreshold > 80)
         darkScreenThreshold := 80
-    }
     
     MsgBox, Calibration complete!`n`nNormal brightness: %brightness%`nCAPTCHA threshold: %darkScreenThreshold%`n`nScreen is considered dark/CAPTCHA when brightness < %darkScreenThreshold%
 return
 
-; ═══════════════════════════════════════════════════════════
-; PAUSE/RESUME FUNCTIONALITY
-; ═══════════════════════════════════════════════════════════
 TogglePause:
     if (!building)
     {
@@ -339,100 +249,114 @@ TogglePause:
         return
     }
     
-    isPaused := !isPaused
-    
     if (isPaused)
     {
-        UpdateStatus(" PAUSED - Press F12 to resume")
-        ShowTooltip(" PAUSED`n`nPress F12 to resume`nPress ESC to exit")
-    }
-    else
-    {
+        if (lastClickedBase > 0 && lastClickedX > 0 && lastClickedY > 0)
+        {
+            UpdateStatus("Redoing last click at Base " . lastClickedBase . "...")
+            ShowTooltip("Redoing last click...")
+            Sleep, 1000
+            
+            EnsureGameFocus()
+            Sleep, 200
+            SmoothMouseMove(lastClickedX, lastClickedY, 8)
+            Sleep, 300
+            Click
+            Sleep, 2000
+            
+            lastClickedBase := 0
+            lastClickedX := 0
+            lastClickedY := 0
+        }
+        
+        isPaused := false
         UpdateStatus("Resuming build...")
         ShowTooltip("Resuming...")
         Sleep, 1000
         ToolTip
     }
+    else
+    {
+        isPaused := true
+        UpdateStatus(" PAUSED - Press F12 to resume")
+        ShowTooltip(" PAUSED`n`nPress F12 to resume`nPress ESC to exit")
+    }
+return
+BaseListView:
+    if (A_GuiEvent = "Normal")
+    {
+        row := A_EventInfo
+        if (row > 0)
+        {
+            LV_GetText(baseNum, row, 1)
+            LV_GetText(units, row, 2)
+            LV_GetText(delay, row, 3)
+            
+            GuiControl,, EditBaseNumber, %baseNum%
+            GuiControl,, EditUnits, %units%
+            GuiControl,, EditDelay, %delay%
+        }
+    }
+return
+RepeatBeepAlert:
+    if (beepTimerActive && isPaused) {
+        SoundPlay, %A_WinDir%\Media\Windows Notify.wav
+        Sleep, 200
+        SoundBeep, 750, 400
+        Sleep, 200
+        SoundBeep, 650, 400
+        
+        ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nNext alert in 10 seconds...")
+    } else {
+        SetTimer, RepeatBeepAlert, Off
+    }
 return
 
-; ═══════════════════════════════════════════════════════════
-; TOOLTIP POSITIONING 
-; ═══════════════════════════════════════════════════════════
 ShowTooltip(message) {
-    ; Position tooltip offset from mouse pointer
     MouseGetPos, mX, mY
     ToolTip, %message%, mX + 200, mY + 100
 }
 
-; ═══════════════════════════════════════════════════════════
-; KEEP SCREEN AWAKE FOR LONG DELAYS
-; ═══════════════════════════════════════════════════════════
 KeepScreenAwake(delaySeconds) {
-    ; Only needed for delays longer than 1 minute
     if (delaySeconds < 60)
         return false
-    
-    ; Jiggle interval: every 30 seconds
-    jiggleInterval := 30000  ; 30 seconds in ms
     return true
 }
 
 PerformScreenJiggle() {
-    ; Subtle mouse jiggle in safe corner to prevent sleep
     MouseGetPos, origX, origY
-    
-    ; Move to top-left corner (safe area)
     MouseMove, 5, 5, 0
     Sleep, 50
     MouseMove, 10, 10, 0
     Sleep, 50
-    
-    ; Return to original position
     MouseMove, origX, origY, 0
 }
 
-; ═══════════════════════════════════════════════════════════
-;  MOUSE MOVEMENT
-; ═══════════════════════════════════════════════════════════
 SmoothMouseMove(targetX, targetY, speed := 10) {
-    ; Get current position
     MouseGetPos, startX, startY
-    
-    ; Calculate distance
     deltaX := targetX - startX
     deltaY := targetY - startY
     distance := Sqrt(deltaX**2 + deltaY**2)
     
-    ; If already at target, no need to move
     if (distance < 2)
         return
     
-    ; Calculate number of steps based on distance and speed
-    ; Speed: 1=slowest, 5=fastest
     steps := Max(10, Floor(distance / (speed * 5)))
-    
-    ; Add slight curve to movement (more natural)
     curveAmount := Random(-10, 10)
     
     Loop, %steps%
     {
         progress := A_Index / steps
-        
-        ; Ease-in-out function for smooth acceleration/deceleration
         t := progress
         eased := t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
         
-        ; Calculate position with slight curve
         currentX := startX + (deltaX * eased)
         currentY := startY + (deltaY * eased) + (curveAmount * Sin(progress * 3.14159))
         
         MouseMove, %currentX%, %currentY%, 0
-        
-        ; Variable delay for more natural movement
         Sleep, % Random(5, 15)
     }
     
-    ; Ensure we end exactly at target
     MouseMove, %targetX%, %targetY%, 0
 }
 
@@ -440,10 +364,6 @@ Random(min, max) {
     Random, rand, %min%, %max%
     return rand
 }
-
-; ═══════════════════════════════════════════════════════════
-; AUTO-UPDATE SYSTEM
-; ═══════════════════════════════════════════════════════════
 
 BtnUpdate:
     if building
@@ -453,7 +373,6 @@ BtnUpdate:
     }
     
     GuiControl,, StatusText, Checking for updates...
-    
     latestVersion := CheckForUpdates()
     
     if (latestVersion = "ERROR")
@@ -536,7 +455,9 @@ FEATURES:
  Real-time status updates
  Auto-update capability
  Game window focus management
- CapTCHA Detection
+ CAPTCHA Detection
+ Pause-time base editing
+
 IMPORTANT:
  Don't move map during execution
  Game must remain visible
@@ -602,10 +523,6 @@ DownloadUpdate() {
     }
 }
 
-; ═══════════════════════════════════════════════════════════
-; UTILITY FUNCTIONS
-; ═══════════════════════════════════════════════════════════
-
 EnsureGameFocus() {
     global gameWindowClass
     
@@ -669,9 +586,6 @@ ForceGameFocus:
     ToolTip
 return
 
-; ═══════════════════════════════════════════════════════════
-; UPDATE GUI DISPLAY
-; ═══════════════════════════════════════════════════════════
 UpdateGUI:
     Gui, 1:Default
     Gui, ListView, BaseListView
@@ -702,6 +616,10 @@ UpdateGUI:
             
             LV_Add("", idx, unitsVal, delayVal, arrowCnt, rem)
         }
+        
+        LV_GetText(selectedRow, 1, 1)
+        if (selectedRow = "")
+            LV_Modify(1, "Select")
     }
     
     if (total = 0)
@@ -717,9 +635,73 @@ UpdateGUI:
     }
 return
 
-; ═══════════════════════════════════════════════════════════
-; RECORD BASE (F10)
-; ═══════════════════════════════════════════════════════════
+BtnUpdateBase:
+    if (!isPaused || !building)
+    {
+        MsgBox, You can only edit bases while the script is PAUSED and BUILDING.
+        return
+    }
+    
+    Gui, Submit, NoHide
+    
+    baseNum := EditBaseNumber
+    newUnits := EditUnits
+    newDelay := EditDelay
+    
+    if (baseNum = "" || newUnits = "" || newDelay = "")
+    {
+        MsgBox, Please fill in all fields.
+        return
+    }
+    
+    total := bases.MaxIndex()
+    if (baseNum < 1 || baseNum > total)
+    {
+        MsgBox, Invalid base number. Must be between 1 and %total%.
+        return
+    }
+    
+    if (newUnits <= 0)
+    {
+        MsgBox, Units must be greater than 0.
+        return
+    }
+    
+    if (newDelay < 0)
+    {
+        MsgBox, Delay cannot be negative.
+        return
+    }
+    
+    baseObj := bases[baseNum]
+    oldUnits := baseObj.units
+    baseObj.units := newUnits
+    
+    if (baseObj.haskey("remaining") && building)
+    {
+        oldRemaining := baseObj.remaining
+        diff := newUnits - oldUnits
+        baseObj.remaining := Max(0, oldRemaining + diff)
+    }
+    else
+    {
+        baseObj.remaining := newUnits
+    }
+    
+    baseObj.delay := newDelay
+    
+    Gosub, UpdateGUI
+    UpdateStatus("Base " . baseNum . " updated: " . newUnits . " units, " . newDelay . "s delay")
+    
+    GuiControl,, EditUnits,
+    GuiControl,, EditDelay,
+return
+
+BtnRefreshList:
+    Gosub, UpdateGUI
+    UpdateStatus("Base list refreshed")
+return
+
 BtnRecordBase:
     if building
     {
@@ -748,9 +730,7 @@ BtnRecordBase:
         {
             InputBox, resourceDelay, Resource Refill Delay, Enter delay in seconds to wait for resources to refill after each full cycle:, , 350, 180, , , , , 0
             if ErrorLevel
-            {
                 resourceDelay := 0
-            }
             else if (resourceDelay < 0)
             {
                 MsgBox, Invalid delay - setting to 0
@@ -758,9 +738,7 @@ BtnRecordBase:
             }
         }
         else
-        {
             resourceDelay := 0
-        }
     }
     
     InputBox, units, Base %baseNum%, How many units to build at Base %baseNum%?
@@ -803,13 +781,10 @@ BtnRecordBase:
     if maxIdx is number
     {
         Loop, %maxIdx%
-        {
             newBase.arrows[A_Index] := arrowKeys[A_Index]
-        }
     }
     
     bases[baseNum] := newBase
-    
     Gosub, UpdateGUI
     
     total := bases.MaxIndex()
@@ -897,7 +872,7 @@ BtnRecordBase:
                                 rev := "Left"
                             
                             SendInput, {%rev%}
-                            Sleep, 100
+                            Sleep, 200
                         }
                     }
                 }
@@ -907,15 +882,10 @@ BtnRecordBase:
             MsgBox, Returned to Base 1!`n`nPress F11 to start building.
         }
         else
-        {
             MsgBox, Recording complete!`n`n%total% base recorded.`n`nPress F11 to start building.
-        }
     }
 return
 
-; ═══════════════════════════════════════════════════════════
-; EXECUTE (F11) - WITH SIMPLE CAPTCHA DETECTION
-; ═══════════════════════════════════════════════════════════
 BtnExecute:
     total := bases.MaxIndex()
     if total is not number
@@ -949,21 +919,13 @@ BtnExecute:
         return
     
     UpdateStatus("Starting macro in 3...")
-    ShowTooltip("Starting macro in 3...")
     Sleep, 1000
-    
     UpdateStatus("Starting macro in 2...")
-    ShowTooltip("Starting macro in 2...")
     Sleep, 1000
-    
     UpdateStatus("Starting macro in 1...")
-    ShowTooltip("Starting macro in 1...")
     Sleep, 1000
-    
     UpdateStatus("Starting now! Remove mouse...")
-    ShowTooltip("Starting now! Remove mouse...")
     Sleep, 500
-    
     ToolTip
     
     building := true
@@ -980,14 +942,10 @@ BtnExecute:
         lastBuildTime[A_Index] := 0
     }
     
-    ; Main build loop
     Loop
     {
-        ; Check for pause
         while (isPaused)
-        {
             Sleep, 100
-        }
         
         if (restartCycle)
         {
@@ -1074,9 +1032,7 @@ BtnExecute:
                 
                 timeSinceLastBuild := currentTime - lastBuildTime[1]
                 if (timeSinceLastBuild < 0)
-                {
                     timeSinceLastBuild := (4294967295 - lastBuildTime[1]) + currentTime
-                }
                 
                 if (timeSinceLastBuild < buildTimeMs)
                 {
@@ -1109,7 +1065,6 @@ BtnExecute:
                             currentTime := A_TickCount
                             timeRemaining := targetTime - currentTime
                             
-                            ; Screen awake jiggle for long waits
                             if (secondsLeft >= 60 && (currentTime - lastJiggle) > 30000)
                             {
                                 PerformScreenJiggle()
@@ -1147,14 +1102,10 @@ BtnExecute:
             }
         }
         
-        ; Go through bases
         Loop, %total%
         {
-            ; Check for pause at start of each base
             while (isPaused)
-            {
                 Sleep, 100
-            }
             
             i := A_Index
             baseObj := bases[i]
@@ -1165,7 +1116,6 @@ BtnExecute:
             if (i > 1)
             {
                 UpdateStatus("Going to Base " . i, true)
-                
                 EnsureGameFocus()
                 Sleep, 150
                 
@@ -1180,24 +1130,48 @@ BtnExecute:
                             EnsureGameFocus()
                         
                         SendInput, {%arrow%}
-                        Sleep, 100
+                        Sleep, 200
                     }
                 }
                 
-                Sleep, 500
+                Sleep, 1000
             }
             
             remCount := remaining[i]
             UpdateStatus("Building at Base " . i . " - Remaining: " . remCount, true)
-            
             EnsureGameFocus()
             Sleep, 200
             
-            ; Mouse wiggle 
+            global firstClickDone
+            if (firstClickDone = "")
+                firstClickDone := false
+            
+            doWiggle := false
+            if (total = 1) {
+                doWiggle := true
+            } else if (!firstClickDone) {
+                doWiggle := true
+                firstClickDone := true
+            }
+            
+            if (doWiggle) {
+                MouseMove, baseObj.x + 5, baseObj.y + 5, 0
+                Sleep, 50
+                MouseMove, baseObj.x, baseObj.y, 0
+                Sleep, 300
+            } else {
+                MouseMove, baseObj.x, baseObj.y, 0
+                Sleep, 300
+            }
+            
             MouseMove, baseObj.x + 5, baseObj.y + 5, 0
             Sleep, 50
             MouseMove, baseObj.x, baseObj.y, 0
             Sleep, 100
+            
+            global lastClickedBase := i
+            global lastClickedX := baseObj.x
+            global lastClickedY := baseObj.y
             
             EnsureGameFocus()
             Click
@@ -1209,29 +1183,28 @@ BtnExecute:
             if (Mod(i, 2) = 0 || i = 1)
                 Gosub, UpdateGUI
             
-            Sleep, 1500  ; Wait a bit before checking for CAPTCHA
+            Sleep, 2000
             
-            ; ═══════════════════════════════════════════════════════════
-            ; CAPTCHA DETECTION - CHECK AFTER EACH UNIT BUILT
-            ; ═══════════════════════════════════════════════════════════
             if (CheckForDarkScreen()) {
-                ; CAPTCHA DETECTED!
                 global isPaused := true
+                global beepTimerActive := true
                 UpdateStatus("⚠ CAPTCHA DETECTED - Script PAUSED", true)
                 
-                ; Play audible alert
                 SoundPlay, %A_WinDir%\Media\Windows Notify.wav
                 Sleep, 300
                 SoundBeep, 800, 500
                 Sleep, 300
                 SoundBeep, 600, 500
                 
-                ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume")
+                ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nBeep will repeat every 10 seconds")
                 
-                ; Wait here until user solves CAPTCHA and presses F12
-                while (isPaused) {
+                SetTimer, RepeatBeepAlert, %beepTimerInterval%
+                
+                while (isPaused)
                     Sleep, 100
-                }
+                
+                SetTimer, RepeatBeepAlert, Off
+                global beepTimerActive := false
                 
                 UpdateStatus(" Resuming after CAPTCHA...")
                 ShowTooltip(" Resuming...")
@@ -1274,7 +1247,7 @@ BtnExecute:
                         rev := "Left"
                     
                     SendInput, {%rev%}
-                    Sleep, 100
+                    Sleep, 200
                 }
             }
             
@@ -1283,7 +1256,6 @@ BtnExecute:
         
         Sleep, 500
         
-        ; Resource refill with screen awake
         if (resourceDelay > 0)
         {
             moreUnits := false
@@ -1317,7 +1289,6 @@ BtnExecute:
                     currentTime := A_TickCount
                     timeRemaining := targetTime - currentTime
                     
-                    ; Perform screen jiggle every 30 seconds for long delays
                     if (needsJiggle && (currentTime - lastJiggle) > 30000)
                     {
                         PerformScreenJiggle()
@@ -1348,7 +1319,6 @@ BtnExecute:
                 {
                     EnsureGameFocus()
                     Sleep, 200
-                    
                     UpdateStatus("Resources ready - continuing...")
                     Sleep, 500
                 }
@@ -1366,9 +1336,6 @@ BtnExecute:
     MsgBox, All units completed at %total% bases!
 return
 
-; ═══════════════════════════════════════════════════════════
-; RESTART CYCLE
-; ═══════════════════════════════════════════════════════════
 RestartCycle:
     if (building)
     {
@@ -1379,9 +1346,6 @@ RestartCycle:
     }
 return
 
-; ═══════════════════════════════════════════════════════════
-; CLEAR
-; ═══════════════════════════════════════════════════════════
 BtnClear:
     if building
     {
@@ -1389,11 +1353,29 @@ BtnClear:
         IfMsgBox No
             return
         
-        ; Stop the building process
+        ; Stop building immediately
         building := false
         isPaused := false
         restartCycle := false
-        ToolTip  ; Clear any tooltips
+        ToolTip
+        
+        ; Clear everything
+        bases := Object()
+        isRecording := false
+        arrowKeys := Object()
+        resourceDelay := 0
+        
+        ; Clear any remaining timers
+        lastBuildTime := Object()
+        remaining := Object()
+        
+        ; Update GUI immediately
+        Gosub, UpdateGUI
+        UpdateStatus("Build stopped by user - all bases cleared")
+        
+        ; Show completion message
+        MsgBox, 64, Build Stopped, Build cycle stopped by user!`n`nAll bases have been cleared.`nReady to record a new sequence.
+        return
     }
     else
     {
@@ -1402,7 +1384,7 @@ BtnClear:
             return
     }
     
-    ; Clear everything
+    ; Clear everything (when not building)
     bases := Object()
     isRecording := false
     arrowKeys := Object()
@@ -1411,52 +1393,27 @@ BtnClear:
     UpdateStatus("All bases cleared - ready to record new sequence")
     MsgBox, Cleared!
 return
-    
-    MsgBox, 4, Clear, Clear all bases?
-    IfMsgBox Yes
-    {
-        bases := Object()
-        isRecording := false
-        arrowKeys := Object()
-        resourceDelay := 0
-        Gosub, UpdateGUI
-        MsgBox, Cleared!
-    }
-return
 
-; ═══════════════════════════════════════════════════════════
-; EXIT
-; ═══════════════════════════════════════════════════════════
 BtnExit:
 GuiClose:
     ExitApp
-; ============================================
-; GITHUB PASSWORD FUNCTION
-; ============================================
+
 GetFromGitHub() {
     try {
-        ; Your fine-grained token
-        token := "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"
+        token := "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"
+        url := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProSEC/refs/heads/main/FTroop.txt?token=GHSAT0AAAAAADTAPG27SBDUDZJTCFIT5QQK2LJWWKQ"
         
-        ; Direct URL to the raw file
-        url := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProSEC/main/FTroop.txt"
-        
-        ; Create HTTP request
         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
         whr.Open("GET", url, false)
         whr.SetRequestHeader("Authorization", "Bearer " . token)
         whr.SetRequestHeader("User-Agent", "FTroopMacroPro/4.0")
         whr.Send()
         
-        ; Check response
         status := whr.Status
         if (status = 200) {
             response := Trim(whr.ResponseText)
-            
-            ; Clean up any extra whitespace or hidden characters
             response := RegExReplace(response, "[^\x20-\x7E\r\n]", "")
             response := Trim(response, "`r`n")
-            
             return response
         } else {
             return "ERROR"
