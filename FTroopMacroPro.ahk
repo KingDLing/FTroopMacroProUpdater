@@ -7,49 +7,54 @@ CoordMode, Mouse, Screen
 CoordMode, ToolTip, Screen
 CoordMode, Pixel, Screen
 
-global GITHUB_RAW_URL := "https://api.github.com/repos/KingDLing/FTroopMacroProSEC/contents/FTroop.txt"
+global CLOUDFLARE_WORKER_URL := "https://withered-sun-752b.jimsmithmi001.workers.dev"
 global MAX_ATTEMPTS := 3
-global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v4.0"
+global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.0"
+
+ValidatePasswordWithServer(userPassword) {
+    global CLOUDFLARE_WORKER_URL
+    
+    try {
+        whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+        whr.Open("POST", CLOUDFLARE_WORKER_URL, true)
+        whr.SetRequestHeader("Content-Type", "application/json")
+        
+        jsonData := "{""password"":""" . userPassword . """}"
+        whr.Send(jsonData)
+        whr.WaitForResponse(10)
+        
+        if (whr.Status = 200) {
+            response := whr.ResponseText
+            
+            if (InStr(response, """valid"":true")) {
+                RegExMatch(response, """expiryDate"":""([^""]+)""", match)
+                expiryDate := match1
+                
+                RegExMatch(response, """message"":""([^""]+)""", match)
+                customMessage := match1
+                
+                return expiryDate "|" customMessage
+            }
+        }
+        
+        return "INVALID"
+    } catch e {
+        return "ERROR"
+    }
+}
 
 SplashTextOn, 400, 130, %SCRIPT_NAME_SEC%, Checking license access...`n`nPlease wait...
 Sleep, 500
-
-passwordData := GetFromGitHub()
 SplashTextOff
-
-if (passwordData = "ERROR")
-{
-    MsgBox, 48, Connection Failed, Cannot connect to license server!`n`n1. Check your internet connection`n2. Make sure GitHub is not blocked`n3. Try again later`n`nIf problem continues, contact support.
-    ExitApp
-}
-
-passwordParts := StrSplit(passwordData, "|")
-if (passwordParts.Length() < 2)
-{
-    MsgBox, 16, Server Error, Invalid license data received!
-    ExitApp
-}
-
-todayPassword := Trim(passwordParts[1])
-expiryDate := Trim(passwordParts[2])
-customMessage := (passwordParts.Length() >= 3) ? Trim(passwordParts[3]) : ""
-
-FormatTime, currentDate,, yyyy-MM-dd
-if (currentDate > expiryDate)
-{
-    MsgBox, 48, License Expired, Your FTroop Macro Pro SEC license has expired!`n`nExpiration date: %expiryDate%`nCurrent date: %currentDate%`n`nPlease renew your license to continue.
-    ExitApp
-}
 
 attempts := 0
 success := false
+expiryDate := ""
+customMessage := ""
 
 Loop
 {
-    inputMessage := "FTroop Macro Pro SEC v4.0`nLicense valid until: " . expiryDate . "`n`n"
-    if (customMessage != "")
-        inputMessage .= customMessage . "`n`n"
-    inputMessage .= "Enter access password:"
+    inputMessage := "FTroop Macro Pro SEC v1.0`n`nEnter access password:"
     
     InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
     
@@ -62,8 +67,29 @@ Loop
             continue
     }
     
-    if (userInput = todayPassword)
+    SplashTextOn, 400, 100, Validating..., Checking your password...`n`nPlease wait...
+    result := ValidatePasswordWithServer(userInput)
+    SplashTextOff
+    
+    if (result = "ERROR")
     {
+        MsgBox, 48, Connection Failed, Cannot connect to license server!`n`n1. Check your internet connection`n2. Try again later`n`nIf problem continues, contact support.
+        continue
+    }
+    
+    if (result != "INVALID")
+    {
+        parts := StrSplit(result, "|")
+        expiryDate := Trim(parts[1])
+        customMessage := (parts.Length() >= 2) ? Trim(parts[2]) : ""
+        
+        FormatTime, currentDate,, yyyy-MM-dd
+        if (currentDate > expiryDate)
+        {
+            MsgBox, 48, License Expired, Your FTroop Macro Pro SEC license has expired!`n`nExpiration date: %expiryDate%`nCurrent date: %currentDate%`n`nPlease renew your license to continue.
+            ExitApp
+        }
+        
         success := true
         break
     }
@@ -83,7 +109,11 @@ Loop
 if (!success)
     ExitApp
 
-MsgBox, 64, Welcome, FTroop Macro Pro SEC v4.0`n------------------------`nAccess granted!`n`nLicense valid until: %expiryDate%`n`nClick OK to start the application.
+welcomeMsg := "FTroop Macro Pro SEC v1.0`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
+if (customMessage != "")
+    welcomeMsg .= "`n`n" . customMessage
+
+MsgBox, 64, Welcome, %welcomeMsg%`n`nClick OK to start the application.
 Sleep, 500
 
 global bases := Object()
@@ -101,27 +131,47 @@ global darkScreenThreshold := 50
 global lastClickedBase := 0
 global lastClickedX := 0
 global lastClickedY := 0
-global SCRIPT_VERSION := "4.0"
+global captchaDetectedAtBase := 0
+global SCRIPT_VERSION := "1.0"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacroPro.ahk"
+global CONFIG_DIR := A_ScriptDir . "\FTroopConfigs"
+
+FileCreateDir, %CONFIG_DIR%
 
 Gui, Color, 0F0F0F
 Gui, Font, s13 Bold cFFD700
 Gui, Add, Text, Center w600 y15, FTroop Macro Pro v%SCRIPT_VERSION%
 
-Gui, Font, s9 cEEEEEE Normal
-Gui, Add, Button, xm y+20 w580 h45 gBtnExecute, Execute Build (F11)
-Gui, Add, Button, xm y+10 w580 h40 gBtnClear, Clear All Bases
-Gui, Add, Button, xm y+5 w580 h40 gBtnUpdate, Check for Updates
-Gui, Add, Button, xm y+5 w580 h40 gBtnExit, Exit
-Gui, Add, Button, xm y+5 w580 h40 gBtnHelp, Help / Instructions
-Gui, Add, Text, xm y+15 w600 h2 0x10 Background404040
+Menu, FileMenu, Add, Save Configuration, BtnSaveConfig
+Menu, FileMenu, Add, Load Configuration, BtnLoadConfig
+Menu, FileMenu, Add, Delete Configuration, BtnDeleteConfig
+Menu, FileMenu, Add
+Menu, FileMenu, Add, Exit, BtnExit
+
+Menu, ToolsMenu, Add, Check for Updates, BtnUpdate
+Menu, ToolsMenu, Add
+Menu, ToolsMenu, Add, Calibrate CAPTCHA Detection, CalibrateDarkDetection
+
+Menu, HelpMenu, Add, Help / Instructions, BtnHelp
+
+Menu, MainMenuBar, Add, &File, :FileMenu
+Menu, MainMenuBar, Add, &Tools, :ToolsMenu
+Menu, MainMenuBar, Add, &Help, :HelpMenu
+
+Gui, Menu, MainMenuBar
+
+Gui, Font, s10 cEEEEEE Normal
+Gui, Add, Button, xm y+20 w280 h35 gBtnExecute, Execute Build (F11)
+Gui, Add, Button, x+20 yp w280 h35 gBtnClear, Clear All Bases
+
+Gui, Add, Text, xm y+10 w600 h2 0x10 Background404040
 Gui, Font, s10 Bold cFFD700
 Gui, Add, Text, xm y+15 w600, Base Configuration
 
 Gui, Font, s9 cBlack Normal
-Gui, Add, ListView, xm y+10 w600 h150 vBaseListView -Multi Grid BackgroundWhite cBlack gBaseListView, Base #|Units|Delay (s)|Arrows|Remaining
+Gui, Add, ListView, xm y+10 w600 h280 vBaseListView -Multi Grid BackgroundWhite cBlack gBaseListView, Base #|Units|Delay (s)|Arrows|Remaining
 LV_ModifyCol(1, 100, "Base #")
 LV_ModifyCol(2, 100, "Units")
 LV_ModifyCol(3, 110, "Delay (s)")
@@ -131,7 +181,7 @@ LV_ModifyCol(5, 120, "Remaining")
 Gui, Add, Text, xm y+10 w600 h2 0x10 Background404040
 
 Gui, Font, s9 cEEEEEE Normal
-Gui, Add, GroupBox, xm y+10 w600 h90, Quick Edit (While Paused)
+Gui, Add, GroupBox, xm y+10 w600 h120, Quick Edit (While Paused)
 Gui, Add, Text, xp+10 yp+25, Base #:
 Gui, Font, s9 c000000 Normal
 Gui, Add, Edit, x+5 yp-3 w50 vEditBaseNumber BackgroundWhite, 1
@@ -145,7 +195,14 @@ Gui, Font, s9 c000000 Normal
 Gui, Add, Edit, x+5 yp-3 w70 vEditDelay BackgroundWhite
 Gui, Font, s9 cEEEEEE Normal
 Gui, Add, Button, x+15 yp-3 w80 h25 gBtnUpdateBase, Update Base
-Gui, Add, Button, xm+510 y+5 w80 h25 gBtnRefreshList, Refresh List
+
+Gui, Add, Text, xm+10 y+15, Resource Delay (s):
+Gui, Font, s9 c000000 Normal
+Gui, Add, Edit, x+5 yp-3 w100 vEditResourceDelay BackgroundWhite, 0
+Gui, Font, s9 cEEEEEE Normal
+Gui, Add, Button, x+10 yp-3 w120 h25 gBtnUpdateResourceDelay, Update Delay
+Gui, Add, Button, x+10 yp w80 h25 gBtnRefreshList, Refresh List
+
 Gui, Add, Text, xm y+10 w600 vStatusText Center, Go to Base 1, Press F10 over the unit you want to build
 
 Gui, Show, w620, FTroop Macro Pro v%SCRIPT_VERSION%
@@ -168,6 +225,9 @@ Right::
         return
     if isRecording
     {
+        EnsureGameFocus()
+        Sleep, 50
+        
         lastIdx := arrowKeys.MaxIndex()
         if lastIdx is not number
             lastIdx := 0
@@ -180,6 +240,282 @@ Right::
         ShowTooltip("Recording arrows: " . count . " keys pressed`nPress F10 when at base")
     }
     Send, {%A_ThisHotkey%}
+return
+
+CompleteReset() {
+    global building, isPaused, restartCycle, isRecording
+    global bases, arrowKeys, resourceDelay
+    global lastBuildTime, remaining
+    global beepTimerActive, lastClickedBase, lastClickedX, lastClickedY
+    global captchaDetectedAtBase
+    
+    building := false
+    isPaused := false
+    restartCycle := false
+    isRecording := false
+    beepTimerActive := false
+    
+    SetTimer, RepeatBeepAlert, Off
+    
+    bases := Object()
+    arrowKeys := Object()
+    lastBuildTime := Object()
+    remaining := Object()
+    
+    resourceDelay := 0
+    GuiControl,, EditResourceDelay, 0
+    
+    lastClickedBase := 0
+    lastClickedX := 0
+    lastClickedY := 0
+    captchaDetectedAtBase := 0
+    
+    ToolTip
+    
+    Gosub, UpdateGUI
+}
+
+BtnUpdateResourceDelay:
+    Gui, Submit, NoHide
+    newDelay := EditResourceDelay
+    
+    if (newDelay = "")
+    {
+        MsgBox, Please enter a valid delay value.
+        return
+    }
+    
+    if (newDelay < 0)
+    {
+        MsgBox, Delay cannot be negative.
+        GuiControl,, EditResourceDelay, %resourceDelay%
+        return
+    }
+    
+    resourceDelay := newDelay
+    UpdateStatus("Resource delay updated to " . resourceDelay . " seconds")
+    Gosub, UpdateGUI
+return
+
+BtnSaveConfig:
+    total := bases.MaxIndex()
+    if total is not number
+        total := 0
+    
+    if (total = 0)
+    {
+        MsgBox, No bases to save! Record bases first.
+        return
+    }
+    
+    InputBox, configName, Save Configuration, Enter a name for this configuration:, , 400, 150
+    
+    if ErrorLevel
+        return
+    
+    if (configName = "")
+    {
+        MsgBox, Configuration name cannot be empty!
+        return
+    }
+    
+    configName := RegExReplace(configName, "[\\/:*?""<>|]", "_")
+    
+    configFile := CONFIG_DIR . "\" . configName . ".ini"
+    
+    IfExist, %configFile%
+    {
+        MsgBox, 4, Overwrite?, Configuration "%configName%" already exists. Overwrite?
+        IfMsgBox No
+            return
+    }
+    
+    IniWrite, %resourceDelay%, %configFile%, Settings, ResourceDelay
+    IniWrite, %total%, %configFile%, Settings, TotalBases
+    
+    Loop, %total%
+    {
+        baseObj := bases[A_Index]
+        section := "Base" . A_Index
+        
+        IniWrite, % baseObj.x, %configFile%, %section%, X
+        IniWrite, % baseObj.y, %configFile%, %section%, Y
+        IniWrite, % baseObj.units, %configFile%, %section%, Units
+        IniWrite, % baseObj.delay, %configFile%, %section%, Delay
+        
+        arrowCount := baseObj.arrows.MaxIndex()
+        if arrowCount is not number
+            arrowCount := 0
+        
+        IniWrite, %arrowCount%, %configFile%, %section%, ArrowCount
+        
+        Loop, %arrowCount%
+        {
+            arrowKey := "Arrow" . A_Index
+            arrowVal := baseObj.arrows[A_Index]
+            IniWrite, %arrowVal%, %configFile%, %section%, %arrowKey%
+        }
+    }
+    
+    MsgBox, 64, Success, Configuration "%configName%" saved successfully!`n`nTotal bases: %total%`nResource delay: %resourceDelay%s
+    UpdateStatus("Configuration saved: " . configName)
+return
+
+BtnLoadConfig:
+    if building
+    {
+        MsgBox, Cannot load while building!
+        return
+    }
+    
+    configs := []
+    configList := ""
+    
+    Loop, %CONFIG_DIR%\*.ini
+    {
+        SplitPath, A_LoopFileName, , , , nameNoExt
+        configs.Push(nameNoExt)
+        configList .= nameNoExt . "|"
+    }
+    
+    if (configs.MaxIndex() = "" || configs.MaxIndex() = 0)
+    {
+        MsgBox, No saved configurations found!
+        return
+    }
+    
+    Gui, LoadConfig:New
+    Gui, LoadConfig:Color, 0F0F0F
+    Gui, LoadConfig:Font, s10 Bold cFFD700
+    Gui, LoadConfig:Add, Text, w300, Select Configuration to Load:
+    Gui, LoadConfig:Font, s9 cBlack Normal
+    Gui, LoadConfig:Add, ListBox, w300 h200 vSelectedConfig, %configList%
+    Gui, LoadConfig:Font, s9 cEEEEEE Normal
+    Gui, LoadConfig:Add, Button, w145 h30 gLoadConfigOK Default, Load
+    Gui, LoadConfig:Add, Button, x+10 yp w145 h30 gLoadConfigCancel, Cancel
+    Gui, LoadConfig:Show, , Load Configuration
+return
+
+LoadConfigOK:
+    Gui, LoadConfig:Submit
+    
+    if (SelectedConfig = "")
+    {
+        MsgBox, Please select a configuration!
+        return
+    }
+    
+    Gui, LoadConfig:Destroy
+    
+    configFile := CONFIG_DIR . "\" . SelectedConfig . ".ini"
+    
+    IniRead, loadedResourceDelay, %configFile%, Settings, ResourceDelay, 0
+    IniRead, totalBases, %configFile%, Settings, TotalBases, 0
+    
+    if (totalBases = 0)
+    {
+        MsgBox, Invalid configuration file!
+        return
+    }
+    
+    CompleteReset()
+    
+    bases := Object()
+    
+    Loop, %totalBases%
+    {
+        section := "Base" . A_Index
+        
+        IniRead, bx, %configFile%, %section%, X
+        IniRead, by, %configFile%, %section%, Y
+        IniRead, units, %configFile%, %section%, Units
+        IniRead, delay, %configFile%, %section%, Delay
+        IniRead, arrowCount, %configFile%, %section%, ArrowCount, 0
+        
+        newBase := Object()
+        newBase.x := bx
+        newBase.y := by
+        newBase.units := units
+        newBase.delay := delay
+        newBase.remaining := units
+        newBase.arrows := Object()
+        
+        Loop, %arrowCount%
+        {
+            arrowKey := "Arrow" . A_Index
+            IniRead, arrowVal, %configFile%, %section%, %arrowKey%
+            newBase.arrows[A_Index] := arrowVal
+        }
+        
+        bases[A_Index] := newBase
+    }
+    
+    resourceDelay := loadedResourceDelay
+    GuiControl,, EditResourceDelay, %resourceDelay%
+    
+    Gosub, UpdateGUI
+    
+    MsgBox, 64, Success, Configuration "%SelectedConfig%" loaded successfully!`n`nBases loaded: %totalBases%`nResource delay: %resourceDelay%s`n`nReady to execute!
+    UpdateStatus("Configuration loaded: " . SelectedConfig)
+return
+
+LoadConfigCancel:
+    Gui, LoadConfig:Destroy
+return
+
+BtnDeleteConfig:
+    configs := []
+    configList := ""
+    
+    Loop, %CONFIG_DIR%\*.ini
+    {
+        SplitPath, A_LoopFileName, , , , nameNoExt
+        configs.Push(nameNoExt)
+        configList .= nameNoExt . "|"
+    }
+    
+    if (configs.MaxIndex() = "" || configs.MaxIndex() = 0)
+    {
+        MsgBox, No saved configurations found!
+        return
+    }
+    
+    Gui, DeleteConfig:New
+    Gui, DeleteConfig:Color, 0F0F0F
+    Gui, DeleteConfig:Font, s10 Bold cFFD700
+    Gui, DeleteConfig:Add, Text, w300, Select Configuration to Delete:
+    Gui, DeleteConfig:Font, s9 cBlack Normal
+    Gui, DeleteConfig:Add, ListBox, w300 h200 vSelectedConfigDelete, %configList%
+    Gui, DeleteConfig:Font, s9 cEEEEEE Normal
+    Gui, DeleteConfig:Add, Button, w145 h30 gDeleteConfigOK, Delete
+    Gui, DeleteConfig:Add, Button, x+10 yp w145 h30 gDeleteConfigCancel, Cancel
+    Gui, DeleteConfig:Show, , Delete Configuration
+return
+
+DeleteConfigOK:
+    Gui, DeleteConfig:Submit
+    
+    if (SelectedConfigDelete = "")
+    {
+        MsgBox, Please select a configuration!
+        return
+    }
+    
+    Gui, DeleteConfig:Destroy
+    
+    MsgBox, 4, Confirm Delete, Are you sure you want to delete "%SelectedConfigDelete%"?
+    IfMsgBox No
+        return
+    
+    configFile := CONFIG_DIR . "\" . SelectedConfigDelete . ".ini"
+    FileDelete, %configFile%
+    
+    MsgBox, 64, Deleted, Configuration "%SelectedConfigDelete%" has been deleted.
+    UpdateStatus("Configuration deleted: " . SelectedConfigDelete)
+return
+
+DeleteConfigCancel:
+    Gui, DeleteConfig:Destroy
 return
 
 CheckForDarkScreen() {
@@ -251,7 +587,7 @@ TogglePause:
     
     if (isPaused)
     {
-        if (lastClickedBase > 0 && lastClickedX > 0 && lastClickedY > 0)
+        if (captchaDetectedAtBase > 0 && lastClickedBase > 0 && lastClickedX > 0 && lastClickedY > 0)
         {
             UpdateStatus("Redoing last click at Base " . lastClickedBase . "...")
             ShowTooltip("Redoing last click...")
@@ -259,10 +595,18 @@ TogglePause:
             
             EnsureGameFocus()
             Sleep, 200
-            SmoothMouseMove(lastClickedX, lastClickedY, 8)
-            Sleep, 300
+            
+            MouseMove, lastClickedX + 5, lastClickedY + 5, 0
+            Sleep, 50
+            MouseMove, lastClickedX, lastClickedY, 0
+            Sleep, 150
+            
             Click
             Sleep, 2000
+            
+            lastBuildTime[captchaDetectedAtBase] := A_TickCount
+            captchaDetectedAtBase := 0
+            UpdateStatus("Timer reset for Base " . lastClickedBase . " after CAPTCHA", true)
             
             lastClickedBase := 0
             lastClickedX := 0
@@ -278,10 +622,11 @@ TogglePause:
     else
     {
         isPaused := true
-        UpdateStatus(" PAUSED - Press F12 to resume")
-        ShowTooltip(" PAUSED`n`nPress F12 to resume`nPress ESC to exit")
+        UpdateStatus("⏸ PAUSED - Press F12 to resume")
+        ShowTooltip("⏸ PAUSED`n`nPress F12 to resume`nPress ESC to exit")
     }
 return
+
 BaseListView:
     if (A_GuiEvent = "Normal")
     {
@@ -298,6 +643,7 @@ BaseListView:
         }
     }
 return
+
 RepeatBeepAlert:
     if (beepTimerActive && isPaused) {
         SoundPlay, %A_WinDir%\Media\Windows Notify.wav
@@ -306,7 +652,7 @@ RepeatBeepAlert:
         Sleep, 200
         SoundBeep, 650, 400
         
-        ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nNext alert in 10 seconds...")
+        ShowTooltip(" CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nNext alert in 10 seconds...")
     } else {
         SetTimer, RepeatBeepAlert, Off
     }
@@ -427,13 +773,14 @@ Records base positions and navigation paths, then automatically cycles
 through bases to build units.
 
 HOTKEYS:
+F9       - Restart cycle (return to Base 1)
 F10      - Record unit position on screen
 F11      - Execute building cycle 
 F12      - Pause/Resume build cycle
 Ctrl+Shift+C - Calibrate CAPTCHA detection
 ESC      - Exit program
 
-NEW CAPTCHA DETECTION:
+CAPTCHA DETECTION:
  Automatically checks for CAPTCHA after each build
  Pauses script and plays alert if CAPTCHA detected
  User solves CAPTCHA manually, then presses F12 to resume
@@ -444,23 +791,29 @@ QUICK START:
 3. Enter unit count and delay time between builds
 4. Use arrow keys to navigate to next base
 5. Press F10 over each new unit at subsequent bases 
-6. While in game, Press CNTRL,Shift, C to calibrate normal game screen.
-7. press F11 to start building
+6. When finished click no to adding another base.
+7. Macro will return to Base 1 and ask if you want to save the build.
+6. Press F11 to start building
+
+SAVE/LOAD CONFIGURATIONS:
+- Load saved configs anytime with "Load Configuration"
+- Delete unwanted configs with "Delete Config"
 
 FEATURES:
- Multiple base support
- Custom build delays
- Resource refill delay
- Auto-return to Base 1
- Real-time status updates
- Auto-update capability
- Game window focus management
- CAPTCHA Detection
- Pause-time base editing
+- Multiple base support
+- Custom build delays
+- Resource refill delay (editable anytime)
+- Auto-return to Base 1
+- Real-time status updates
+- Auto-update capability
+- Game window focus management
+- CAPTCHA Detection
+- Pause-time base editing
+- Save/Load configurations
 
 IMPORTANT:
- Don't move map during execution
- Game must remain visible
+- Don't move map during execution
+- Game must remain visible
     )
     
     MsgBox, %helpText%
@@ -633,6 +986,8 @@ UpdateGUI:
             resDelayText := " | Resource delay: " resourceDelay "s"
         GuiControl,, StatusText, %total% base(s) recorded%resDelayText% - Press F11 to execute
     }
+    
+    GuiControl,, EditResourceDelay, %resourceDelay%
 return
 
 BtnUpdateBase:
@@ -736,9 +1091,13 @@ BtnRecordBase:
                 MsgBox, Invalid delay - setting to 0
                 resourceDelay := 0
             }
+            GuiControl,, EditResourceDelay, %resourceDelay%
         }
         else
+        {
             resourceDelay := 0
+            GuiControl,, EditResourceDelay, 0
+        }
     }
     
     InputBox, units, Base %baseNum%, How many units to build at Base %baseNum%?
@@ -813,7 +1172,7 @@ BtnRecordBase:
         else
         {
             arrowKeys := Object()
-            MsgBox, Recording complete!`n`n1 base recorded.`n`nPress F11 to start building.
+            MsgBox, Recording complete!`n`n1 base recorded.`n`nPress F11 to start building, or save this configuration for later use.
         }
         return
     }
@@ -879,10 +1238,13 @@ BtnRecordBase:
             }
             
             Sleep, 500
-            MsgBox, Returned to Base 1!`n`nPress F11 to start building.
+            MsgBox, 4, Ready!, Returned to Base 1!`n`nPress F11 to start building, or save this configuration?`n`nYes = Save configuration`nNo = Continue without saving
+            
+            IfMsgBox Yes
+                Gosub, BtnSaveConfig
         }
         else
-            MsgBox, Recording complete!`n`n%total% base recorded.`n`nPress F11 to start building.
+            MsgBox, Recording complete!`n`n%total% base recorded.`n`nPress F11 to start building, or save this configuration for later use.
     }
 return
 
@@ -893,7 +1255,7 @@ BtnExecute:
     
     if (total = 0)
     {
-        MsgBox, No bases recorded!
+        MsgBox, No bases recorded!`n`nYou can either:`n1. Record new bases with F10`n2. Load a saved configuration
         return
     }
     
@@ -931,6 +1293,7 @@ BtnExecute:
     building := true
     isPaused := false
     restartCycle := false
+    captchaDetectedAtBase := 0
     
     remaining := Object()
     lastBuildTime := Object()
@@ -946,6 +1309,9 @@ BtnExecute:
     {
         while (isPaused)
             Sleep, 100
+        
+        if (!building)
+            break
         
         if (restartCycle)
         {
@@ -979,7 +1345,7 @@ BtnExecute:
                     targetTime := startTime + timeLeft
                     lastDisplayed := secondsLeft
                     
-                    while (A_TickCount < targetTime && !restartCycle && !isPaused)
+                    while (A_TickCount < targetTime && !restartCycle && !isPaused && building)
                     {
                         currentTime := A_TickCount
                         timeRemaining := targetTime - currentTime
@@ -997,14 +1363,17 @@ BtnExecute:
                         
                         Sleep, 100
                         
-                        if (restartCycle || isPaused)
+                        if (restartCycle || isPaused || !building)
                             break
                     }
                     
-                    if (!restartCycle && !isPaused)
+                    if (!restartCycle && !isPaused && building)
                         UpdateStatus("Base 1 ready!")
                 }
             }
+            
+            if (!building)
+                break
             
             UpdateStatus("Restarting cycle...")
             ShowTooltip("Base 1 ready! Restarting cycle...")
@@ -1060,7 +1429,7 @@ BtnExecute:
                         lastDisplayedSecond := secondsLeft
                         lastJiggle := startTime
                         
-                        while (A_TickCount < targetTime && !restartCycle && !isPaused)
+                        while (A_TickCount < targetTime && !restartCycle && !isPaused && building)
                         {
                             currentTime := A_TickCount
                             timeRemaining := targetTime - currentTime
@@ -1084,17 +1453,17 @@ BtnExecute:
                             
                             Sleep, 100
                             
-                            if (restartCycle || isPaused)
+                            if (restartCycle || isPaused || !building)
                             {
                                 UpdateStatus("Wait interrupted...")
                                 break
                             }
                         }
                         
-                        if (!restartCycle && !isPaused)
+                        if (!restartCycle && !isPaused && building)
                             UpdateStatus("Base 1 ready!", true)
                         
-                        if (restartCycle || isPaused)
+                        if (restartCycle || isPaused || !building)
                             continue
                     }
                     continue
@@ -1102,10 +1471,16 @@ BtnExecute:
             }
         }
         
+        if (!building)
+            break
+        
         Loop, %total%
         {
-            while (isPaused)
+            while (isPaused && building)
                 Sleep, 100
+            
+            if (!building)
+                break
             
             i := A_Index
             baseObj := bases[i]
@@ -1124,6 +1499,9 @@ BtnExecute:
                 {
                     Loop, %maxArrows%
                     {
+                        if (!building)
+                            break
+                        
                         arrow := baseObj.arrows[A_Index]
                         
                         if (Mod(A_Index, 3) = 0)
@@ -1134,47 +1512,35 @@ BtnExecute:
                     }
                 }
                 
+                if (!building)
+                    break
+                
                 Sleep, 1000
             }
+            
+            if (!building)
+                break
             
             remCount := remaining[i]
             UpdateStatus("Building at Base " . i . " - Remaining: " . remCount, true)
             EnsureGameFocus()
             Sleep, 200
             
-            global firstClickDone
-            if (firstClickDone = "")
-                firstClickDone := false
-            
-            doWiggle := false
-            if (total = 1) {
-                doWiggle := true
-            } else if (!firstClickDone) {
-                doWiggle := true
-                firstClickDone := true
-            }
-            
-            if (doWiggle) {
-                MouseMove, baseObj.x + 5, baseObj.y + 5, 0
-                Sleep, 50
-                MouseMove, baseObj.x, baseObj.y, 0
-                Sleep, 300
-            } else {
-                MouseMove, baseObj.x, baseObj.y, 0
-                Sleep, 300
-            }
-            
             MouseMove, baseObj.x + 5, baseObj.y + 5, 0
             Sleep, 50
             MouseMove, baseObj.x, baseObj.y, 0
-            Sleep, 100
+            Sleep, 150
             
-            global lastClickedBase := i
-            global lastClickedX := baseObj.x
-            global lastClickedY := baseObj.y
+            lastClickedBase := i
+            lastClickedX := baseObj.x
+            lastClickedY := baseObj.y
             
             EnsureGameFocus()
+            Sleep, 100
             Click
+            Sleep, 100
+            Click
+            Sleep, 100
             
             remaining[i] := remaining[i] - 1
             lastBuildTime[i] := A_TickCount
@@ -1185,10 +1551,14 @@ BtnExecute:
             
             Sleep, 2000
             
+            if (!building)
+                break
+            
             if (CheckForDarkScreen()) {
-                global isPaused := true
-                global beepTimerActive := true
-                UpdateStatus("⚠ CAPTCHA DETECTED - Script PAUSED", true)
+                isPaused := true
+                beepTimerActive := true
+                captchaDetectedAtBase := i
+                UpdateStatus(" CAPTCHA DETECTED - Script PAUSED", true)
                 
                 SoundPlay, %A_WinDir%\Media\Windows Notify.wav
                 Sleep, 300
@@ -1196,15 +1566,18 @@ BtnExecute:
                 Sleep, 300
                 SoundBeep, 600, 500
                 
-                ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nBeep will repeat every 10 seconds")
+                ShowTooltip(" CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nBeep will repeat every 10 seconds")
                 
                 SetTimer, RepeatBeepAlert, %beepTimerInterval%
                 
-                while (isPaused)
+                while (isPaused && building)
                     Sleep, 100
                 
                 SetTimer, RepeatBeepAlert, Off
-                global beepTimerActive := false
+                beepTimerActive := false
+                
+                if (!building)
+                    break
                 
                 UpdateStatus(" Resuming after CAPTCHA...")
                 ShowTooltip(" Resuming...")
@@ -1213,12 +1586,18 @@ BtnExecute:
             }
         }
         
+        if (!building)
+            break
+        
         UpdateStatus("Returning to Base 1...", true)
         EnsureGameFocus()
         Sleep, 200
         
         Loop, %total%
         {
+            if (!building)
+                break
+            
             reverseIdx := total - A_Index + 1
             
             if (reverseIdx < 1)
@@ -1234,6 +1613,9 @@ BtnExecute:
             {
                 Loop, %maxArrows%
                 {
+                    if (!building)
+                        break
+                    
                     arrowIdx := maxArrows - A_Index + 1
                     arrow := baseToReverse.arrows[arrowIdx]
                     
@@ -1253,6 +1635,9 @@ BtnExecute:
             
             Sleep, 500
         }
+        
+        if (!building)
+            break
         
         Sleep, 500
         
@@ -1284,7 +1669,7 @@ BtnExecute:
                 lastDisplayed := resourceDelay
                 lastJiggle := startTime
                 
-                while (A_TickCount < targetTime && !restartCycle && !isPaused)
+                while (A_TickCount < targetTime && !restartCycle && !isPaused && building)
                 {
                     currentTime := A_TickCount
                     timeRemaining := targetTime - currentTime
@@ -1308,14 +1693,14 @@ BtnExecute:
                     
                     Sleep, 100
                     
-                    if (restartCycle || isPaused)
+                    if (restartCycle || isPaused || !building)
                     {
                         UpdateStatus("Resource wait interrupted...")
                         break
                     }
                 }
                 
-                if (!restartCycle && !isPaused)
+                if (!restartCycle && !isPaused && building)
                 {
                     EnsureGameFocus()
                     Sleep, 200
@@ -1325,6 +1710,9 @@ BtnExecute:
             }
         }
         
+        if (!building)
+            break
+        
         if (!restartCycle && !isPaused)
             Gosub, UpdateGUI
     }
@@ -1333,7 +1721,9 @@ BtnExecute:
     isPaused := false
     UpdateStatus("Build complete! All units finished.")
     ToolTip
-    MsgBox, All units completed at %total% bases!
+    
+    if (building = false)
+        MsgBox, All units completed at %total% bases!
 return
 
 RestartCycle:
@@ -1349,32 +1739,14 @@ return
 BtnClear:
     if building
     {
-        MsgBox, 4, Stop Building?, This will STOP the current build cycle and clear all bases.`n`nAre you sure?
+        MsgBox, 4, Stop Building?, This will IMMEDIATELY STOP the current build cycle and clear all bases.`n`nAre you sure?
         IfMsgBox No
             return
         
-        ; Stop building immediately
-        building := false
-        isPaused := false
-        restartCycle := false
-        ToolTip
+        CompleteReset()
         
-        ; Clear everything
-        bases := Object()
-        isRecording := false
-        arrowKeys := Object()
-        resourceDelay := 0
-        
-        ; Clear any remaining timers
-        lastBuildTime := Object()
-        remaining := Object()
-        
-        ; Update GUI immediately
-        Gosub, UpdateGUI
-        UpdateStatus("Build stopped by user - all bases cleared")
-        
-        ; Show completion message
-        MsgBox, 64, Build Stopped, Build cycle stopped by user!`n`nAll bases have been cleared.`nReady to record a new sequence.
+        UpdateStatus("✓ Build stopped - all bases cleared")
+        MsgBox, 64, Build Stopped, Build cycle stopped immediately!`n`nAll bases have been cleared.`nAll timers reset.`n`nReady to record a new sequence.
         return
     }
     else
@@ -1384,12 +1756,7 @@ BtnClear:
             return
     }
     
-    ; Clear everything (when not building)
-    bases := Object()
-    isRecording := false
-    arrowKeys := Object()
-    resourceDelay := 0
-    Gosub, UpdateGUI
+    CompleteReset()
     UpdateStatus("All bases cleared - ready to record new sequence")
     MsgBox, Cleared!
 return
@@ -1397,29 +1764,3 @@ return
 BtnExit:
 GuiClose:
     ExitApp
-
-GetFromGitHub() {
-    try {
-        token := "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"
-        url := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProSEC/refs/heads/main/FTroop.txt?token=GHSAT0AAAAAADTAPG27SBDUDZJTCFIT5QQK2LJWWKQ"
-        
-        whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-        whr.Open("GET", url, false)
-        whr.SetRequestHeader("Authorization", "Bearer " . token)
-        whr.SetRequestHeader("User-Agent", "FTroopMacroPro/4.0")
-        whr.Send()
-        
-        status := whr.Status
-        if (status = 200) {
-            response := Trim(whr.ResponseText)
-            response := RegExReplace(response, "[^\x20-\x7E\r\n]", "")
-            response := Trim(response, "`r`n")
-            return response
-        } else {
-            return "ERROR"
-        }
-    } catch {
-        return "ERROR"
-    }
-}
-return
