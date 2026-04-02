@@ -9,7 +9,7 @@ CoordMode, Pixel, Screen
 
 global CLOUDFLARE_WORKER_URL := "https://withered-sun-752b.jimsmithmi001.workers.dev"
 global MAX_ATTEMPTS := 3
-global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.0"
+global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.1"
 
 ValidatePasswordWithServer(userPassword) {
     global CLOUDFLARE_WORKER_URL
@@ -54,7 +54,7 @@ customMessage := ""
 
 Loop
 {
-    inputMessage := "FTroop Macro Pro SEC v1.0`n`nEnter access password:"
+    inputMessage := "FTroop Macro Pro SEC v1.1`n`nEnter access password:"
     
     InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
     
@@ -109,7 +109,7 @@ Loop
 if (!success)
     ExitApp
 
-welcomeMsg := "FTroop Macro Pro SEC v1.0`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
+welcomeMsg := "FTroop Macro Pro SEC v1.1`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
 if (customMessage != "")
     welcomeMsg .= "`n`n" . customMessage
 
@@ -127,12 +127,11 @@ global gameWindowClass := ""
 global maxWaitTime := 120000
 global beepTimerActive := false
 global beepTimerInterval := 10000
-global darkScreenThreshold := 50
 global lastClickedBase := 0
 global lastClickedX := 0
 global lastClickedY := 0
 global captchaDetectedAtBase := 0
-global SCRIPT_VERSION := "1.0"
+global SCRIPT_VERSION := "1.1"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacroPro.ahk"
@@ -151,8 +150,6 @@ Menu, FileMenu, Add
 Menu, FileMenu, Add, Exit, BtnExit
 
 Menu, ToolsMenu, Add, Check for Updates, BtnUpdate
-Menu, ToolsMenu, Add
-Menu, ToolsMenu, Add, Calibrate CAPTCHA Detection, CalibrateDarkDetection
 
 Menu, HelpMenu, Add, Help / Instructions, BtnHelp
 
@@ -215,7 +212,6 @@ F12::Gosub, TogglePause
 F9::Gosub, RestartCycle
 Esc::ExitApp
 ^!F::Gosub, ForceGameFocus
-^+C::Gosub, CalibrateDarkDetection
 
 Up::
 Down::
@@ -522,18 +518,11 @@ CheckForDarkScreen() {
     SysGet, screenWidth, 0
     SysGet, screenHeight, 1
     
-    points := []
-    points.push([screenWidth // 2, screenHeight // 3])
-    points.push([screenWidth // 2, screenHeight // 2])
-    points.push([screenWidth // 2, screenHeight * 2 // 3])
-    points.push([screenWidth // 3, screenHeight // 2])
-    points.push([screenWidth * 2 // 3, screenHeight // 2])
-    
     darkPoints := 0
     
-    for i, point in points {
-        x := point[1]
-        y := point[2]
+    Loop, 5 {
+        x := screenWidth // 2
+        y := screenHeight // 3 + (A_Index - 1) * (screenHeight // 12)
         
         PixelGetColor, color, %x%, %y%, RGB
         red := (color >> 16) & 0xFF
@@ -541,40 +530,15 @@ CheckForDarkScreen() {
         blue := color & 0xFF
         brightness := (red + green + blue) / 3
         
-        if (brightness < darkScreenThreshold)
+        if (brightness < 40)
             darkPoints++
     }
     
-    return (darkPoints >= 3)
+    if (darkPoints >= 4)
+        return true
+    
+    return false
 }
-
-CalibrateDarkDetection:
-    MsgBox, 4, Calibrate CAPTCHA Detection, CAPTCHA Detection Calibration`n`nInstructions:`n1. Make sure NO CAPTCHA is visible (normal game screen)`n2. Click OK to calibrate normal screen brightness`n`nContinue?
-    
-    IfMsgBox No
-        return
-    
-    SysGet, screenWidth, 0
-    SysGet, screenHeight, 1
-    
-    x := screenWidth // 2
-    y := screenHeight // 2
-    
-    PixelGetColor, color, %x%, %y%, RGB
-    red := (color >> 16) & 0xFF
-    green := (color >> 8) & 0xFF
-    blue := color & 0xFF
-    brightness := (red + green + blue) / 3
-    
-    global darkScreenThreshold := brightness * 0.4
-    
-    if (darkScreenThreshold < 30)
-        darkScreenThreshold := 30
-    if (darkScreenThreshold > 80)
-        darkScreenThreshold := 80
-    
-    MsgBox, Calibration complete!`n`nNormal brightness: %brightness%`nCAPTCHA threshold: %darkScreenThreshold%`n`nScreen is considered dark/CAPTCHA when brightness < %darkScreenThreshold%
-return
 
 TogglePause:
     if (!building)
@@ -622,8 +586,8 @@ TogglePause:
     else
     {
         isPaused := true
-        UpdateStatus("⏸ PAUSED - Press F12 to resume")
-        ShowTooltip("⏸ PAUSED`n`nPress F12 to resume`nPress ESC to exit")
+        UpdateStatus("PAUSED - Press F12 to resume")
+        ShowTooltip("PAUSED`n`nPress F12 to resume`nPress ESC to exit")
     }
 return
 
@@ -652,7 +616,7 @@ RepeatBeepAlert:
         Sleep, 200
         SoundBeep, 650, 400
         
-        ShowTooltip(" CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nNext alert in 10 seconds...")
+        ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nNext alert in 10 seconds...")
     } else {
         SetTimer, RepeatBeepAlert, Off
     }
@@ -768,16 +732,14 @@ BtnHelp:
 FTROOP MACRO PRO v%SCRIPT_VERSION%
 
 WHAT THIS SCRIPT DOES:
-Automates unit building across multiple bases in Combat Siege.
-Records base positions and navigation paths, then automatically cycles
-through bases to build units.
+Automates unit building across multiple bases.
+Records base positions and navigation paths, then automatically cycles through bases to build units.
 
 HOTKEYS:
 F9       - Restart cycle (return to Base 1)
 F10      - Record unit position on screen
 F11      - Execute building cycle 
 F12      - Pause/Resume build cycle
-Ctrl+Shift+C - Calibrate CAPTCHA detection
 ESC      - Exit program
 
 CAPTCHA DETECTION:
@@ -791,29 +753,22 @@ QUICK START:
 3. Enter unit count and delay time between builds
 4. Use arrow keys to navigate to next base
 5. Press F10 over each new unit at subsequent bases 
-6. When finished click no to adding another base.
-7. Macro will return to Base 1 and ask if you want to save the build.
-6. Press F11 to start building
+6. When finished click no to adding another base
+7. Press F11 to start building
 
 SAVE/LOAD CONFIGURATIONS:
-- Load saved configs anytime with "Load Configuration"
-- Delete unwanted configs with "Delete Config"
+- Save and load configs from File menu
 
 FEATURES:
 - Multiple base support
 - Custom build delays
-- Resource refill delay (editable anytime)
+- Resource refill delay
 - Auto-return to Base 1
 - Real-time status updates
 - Auto-update capability
 - Game window focus management
 - CAPTCHA Detection
 - Pause-time base editing
-- Save/Load configurations
-
-IMPORTANT:
-- Don't move map during execution
-- Game must remain visible
     )
     
     MsgBox, %helpText%
@@ -1558,7 +1513,7 @@ BtnExecute:
                 isPaused := true
                 beepTimerActive := true
                 captchaDetectedAtBase := i
-                UpdateStatus(" CAPTCHA DETECTED - Script PAUSED", true)
+                UpdateStatus("CAPTCHA DETECTED - Script PAUSED", true)
                 
                 SoundPlay, %A_WinDir%\Media\Windows Notify.wav
                 Sleep, 300
@@ -1566,7 +1521,7 @@ BtnExecute:
                 Sleep, 300
                 SoundBeep, 600, 500
                 
-                ShowTooltip(" CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nBeep will repeat every 10 seconds")
+                ShowTooltip("CAPTCHA DETECTED!`n`nScript PAUSED automatically.`n`n1. Solve the CAPTCHA`n2. Press F12 to resume`n`nBeep will repeat every 10 seconds")
                 
                 SetTimer, RepeatBeepAlert, %beepTimerInterval%
                 
@@ -1579,8 +1534,8 @@ BtnExecute:
                 if (!building)
                     break
                 
-                UpdateStatus(" Resuming after CAPTCHA...")
-                ShowTooltip(" Resuming...")
+                UpdateStatus("Resuming after CAPTCHA...")
+                ShowTooltip("Resuming...")
                 Sleep, 1000
                 ToolTip
             }
@@ -1745,7 +1700,7 @@ BtnClear:
         
         CompleteReset()
         
-        UpdateStatus("✓ Build stopped - all bases cleared")
+        UpdateStatus("Build stopped - all bases cleared")
         MsgBox, 64, Build Stopped, Build cycle stopped immediately!`n`nAll bases have been cleared.`nAll timers reset.`n`nReady to record a new sequence.
         return
     }
