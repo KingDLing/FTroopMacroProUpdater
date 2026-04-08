@@ -9,7 +9,7 @@ CoordMode, Pixel, Screen
 
 global CLOUDFLARE_WORKER_URL := "https://withered-sun-752b.jimsmithmi001.workers.dev"
 global MAX_ATTEMPTS := 3
-global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.2"
+global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.3"
 
 ValidatePasswordWithServer(userPassword) {
     global CLOUDFLARE_WORKER_URL
@@ -54,7 +54,7 @@ customMessage := ""
 
 Loop
 {
-    inputMessage := "FTroop Macro Pro SEC v1.2`n`nEnter access password:"
+    inputMessage := "FTroop Macro Pro SEC v1.3`n`nEnter access password:"
     
     InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
     
@@ -109,7 +109,7 @@ Loop
 if (!success)
     ExitApp
 
-welcomeMsg := "FTroop Macro Pro SEC v1.2`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
+welcomeMsg := "FTroop Macro Pro SEC v1.3`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
 if (customMessage != "")
     welcomeMsg .= "`n`n" . customMessage
 
@@ -131,7 +131,7 @@ global lastClickedBase := 0
 global lastClickedX := 0
 global lastClickedY := 0
 global captchaDetectedAtBase := 0
-global SCRIPT_VERSION := "1.2"
+global SCRIPT_VERSION := "1.3"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacroPro.ahk"
@@ -1485,10 +1485,18 @@ BtnExecute:
             EnsureGameFocus()
             Sleep, 200
             
-            MouseMove, baseObj.x + 5, baseObj.y + 5, 0
+                        MouseMove, baseObj.x + 5, baseObj.y + 5, 0
             Sleep, 50
             MouseMove, baseObj.x, baseObj.y, 0
-            Sleep, 150
+            
+            Loop, 10 {
+                Sleep, 25
+                MouseGetPos, currentX, currentY
+                if (Abs(currentX - baseObj.x) <= 2 && Abs(currentY - baseObj.y) <= 2)
+                    break
+            }
+            
+            Sleep, 100
             
             lastClickedBase := i
             lastClickedX := baseObj.x
