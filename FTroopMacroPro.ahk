@@ -9,7 +9,7 @@ CoordMode, Pixel, Screen
 
 global CLOUDFLARE_WORKER_URL := "https://withered-sun-752b.jimsmithmi001.workers.dev"
 global MAX_ATTEMPTS := 3
-global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.1"
+global SCRIPT_NAME_SEC := "FTroop Macro Pro SEC v1.2"
 
 ValidatePasswordWithServer(userPassword) {
     global CLOUDFLARE_WORKER_URL
@@ -54,7 +54,7 @@ customMessage := ""
 
 Loop
 {
-    inputMessage := "FTroop Macro Pro SEC v1.1`n`nEnter access password:"
+    inputMessage := "FTroop Macro Pro SEC v1.2`n`nEnter access password:"
     
     InputBox, userInput, %SCRIPT_NAME_SEC%, %inputMessage%, HIDE, 480, 220
     
@@ -109,7 +109,7 @@ Loop
 if (!success)
     ExitApp
 
-welcomeMsg := "FTroop Macro Pro SEC v1.1`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
+welcomeMsg := "FTroop Macro Pro SEC v1.2`n------------------------`nAccess granted!`n`nLicense valid until: " . expiryDate
 if (customMessage != "")
     welcomeMsg .= "`n`n" . customMessage
 
@@ -131,11 +131,13 @@ global lastClickedBase := 0
 global lastClickedX := 0
 global lastClickedY := 0
 global captchaDetectedAtBase := 0
-global SCRIPT_VERSION := "1.1"
+global SCRIPT_VERSION := "1.2"
 global UPDATE_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/FTroopMacroPro.ahk"
 global VERSION_CHECK_URL := "https://raw.githubusercontent.com/KingDLing/FTroopMacroProUpdater/main/Version.txt"
 global SCRIPT_NAME := "FTroopMacroPro.ahk"
 global CONFIG_DIR := A_ScriptDir . "\FTroopConfigs"
+global remaining := Object()
+global lastBuildTime := Object()
 
 FileCreateDir, %CONFIG_DIR%
 
@@ -241,7 +243,7 @@ return
 CompleteReset() {
     global building, isPaused, restartCycle, isRecording
     global bases, arrowKeys, resourceDelay
-    global lastBuildTime, remaining
+    global remaining, lastBuildTime
     global beepTimerActive, lastClickedBase, lastClickedX, lastClickedY
     global captchaDetectedAtBase
     
@@ -255,8 +257,8 @@ CompleteReset() {
     
     bases := Object()
     arrowKeys := Object()
-    lastBuildTime := Object()
     remaining := Object()
+    lastBuildTime := Object()
     
     resourceDelay := 0
     GuiControl,, EditResourceDelay, 0
@@ -919,7 +921,9 @@ UpdateGUI:
             delayVal := baseObj.delay
             rem := unitsVal
             
-            if baseObj.haskey("remaining")
+            if (building && remaining.HasKey(idx))
+                rem := remaining[idx]
+            else if baseObj.haskey("remaining")
                 rem := baseObj.remaining
             
             LV_Add("", idx, unitsVal, delayVal, arrowCnt, rem)
@@ -986,19 +990,19 @@ BtnUpdateBase:
     baseObj := bases[baseNum]
     oldUnits := baseObj.units
     baseObj.units := newUnits
+    baseObj.delay := newDelay
     
-    if (baseObj.haskey("remaining") && building)
+    if (building)
     {
-        oldRemaining := baseObj.remaining
+        oldRemaining := remaining[baseNum]
         diff := newUnits - oldUnits
-        baseObj.remaining := Max(0, oldRemaining + diff)
+        remaining[baseNum] := Max(0, oldRemaining + diff)
+        baseObj.remaining := remaining[baseNum]
     }
     else
     {
         baseObj.remaining := newUnits
     }
-    
-    baseObj.delay := newDelay
     
     Gosub, UpdateGUI
     UpdateStatus("Base " . baseNum . " updated: " . newUnits . " units, " . newDelay . "s delay")
@@ -1501,8 +1505,7 @@ BtnExecute:
             lastBuildTime[i] := A_TickCount
             
             baseObj.remaining := remaining[i]
-            if (Mod(i, 2) = 0 || i = 1)
-                Gosub, UpdateGUI
+            Gosub, UpdateGUI
             
             Sleep, 2000
             
